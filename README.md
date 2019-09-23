@@ -18,9 +18,11 @@ https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideL1TPhase2Instructions#CMSS
 
 ## Step-2: Tyler's Jet Algorithm
 ````
+cd $CMSSW_BASE/src
 git remote add truggles git@github.com:truggles/cmssw.git
 git fetch truggles phase2-l1taus_10_5_Xv2
 git cms-merge-topic -u truggles:phase2-l1taus_10_5_X_Apr26
+scram b -j 8
 ````
 More information can be found here
 https://twiki.cern.ch/twiki/bin/viewauth/CMS/Phase2L1CaloJetsAndTaus#Central_Integration_Branch
@@ -30,6 +32,8 @@ https://twiki.cern.ch/twiki/bin/viewauth/CMS/Phase2L1CaloJetsAndTaus#Central_Int
 cd $CMSSW_BASE/src/L1Trigger/
 rm -rf L1CaloTrigger/
 git clone https://github.com/ekoenig4/L1CaloTrigger.git
+cd L1CaloTrigger/
+scram b -j 8
 ````
 
 ## Step-4: Crab Jobs
