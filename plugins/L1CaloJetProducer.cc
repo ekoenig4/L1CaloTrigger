@@ -128,6 +128,7 @@ private:
   class l1CaloJetObj
   {
   public:
+    bool isSet = false;
     bool barrelSeeded = true; // default to barrel seeded
     reco::Candidate::PolarLorentzVector jetCluster;
     reco::Candidate::PolarLorentzVector hcalJetCluster;
@@ -142,6 +143,8 @@ private:
     float leadingL1EGET = 0.;
     float l1egJetClusterET = 0.;
 
+    float peak_total_et = 0;
+
     // For decay mode related checks with CaloTaus
     std::vector< std::vector< float > > associated_l1EGs;
 
@@ -151,12 +154,12 @@ private:
     float hcal_seed = 0.;
     float hcal_3x5 = 0.;
     float hcal_7x7 = 0.;
-    float hcal_nHits = 0.;
+    int hcal_nHits = 0.;
 
     float ecal_seed = 0.;
     float ecal_3x5 = 0.;
     float ecal_7x7 = 0.;
-    float ecal_nHits = 0.;
+    int ecal_nHits = 0.;
 
     float l1eg_seed = 0.;
     float l1eg_3x5 = 0.;
@@ -164,7 +167,7 @@ private:
     float l1eg_nHits = 0.;
     float n_l1eg_HoverE_LessThreshold = 0.;
 
-    float l1eg_nL1EGs = 0.;
+    int l1eg_nL1EGs = 0.;
     float l1eg_nL1EGs_standaloneSS = 0.;
     float l1eg_nL1EGs_standaloneIso = 0.;
     float l1eg_nL1EGs_trkMatchSS = 0.;
@@ -173,10 +176,10 @@ private:
     float total_seed = 0.;
     float total_3x5 = 0.;
     float total_7x7 = 0.;
-    float total_nHits = 0.;
+    int total_nHits = 0.;
 
-    void Init()
-    {
+    l1CaloJetObj() {
+      isSet = false;
       SetJetClusterP4( 0., 0., 0., 0. );
       SetHcalJetClusterP4( 0., 0., 0., 0. );
       SetEcalJetClusterP4( 0., 0., 0., 0. );
@@ -219,10 +222,7 @@ private:
       this->l1egJetCluster.SetPhi( phi );
       this->l1egJetCluster.SetM( mass );
     }
-
-    void setSeed(int iphi,int ieta,float ecal_tower_et,float hcal_tower_et,float l1eg_tower_et) {
-
-    }
+    inline bool equals(const l1CaloJetObj& rhs) { return this->seed_iPhi == rhs.seed_iPhi && this->seed_iEta == rhs.seed_iEta; }
   };
 
   class SimpleCaloHit
@@ -248,9 +248,13 @@ private:
     int l1eg_standaloneIso = 0;
   };
 
-  class Tower3x3 : SimpleCaloHit{
+  class Tower3x3 : public SimpleCaloHit{
   public:
+    static const int M_JETS = 4;
     SimpleCaloHit seed;
+    float peak_total_et;
+    l1CaloJetObj jetlist[M_JETS];
+    int njets = 0;
     void setSeed( SimpleCaloHit & caloHit ) {
       tower_iEta = caloHit.tower_iEta;
       tower_iPhi = caloHit.tower_iPhi;
@@ -259,6 +263,7 @@ private:
       ecal_tower_et = caloHit.ecal_tower_et;
       hcal_tower_et = caloHit.hcal_tower_et;
       l1eg_tower_et = caloHit.l1eg_tower_et;
+      total_tower_et = caloHit.total_tower_et;
       isBarrel = caloHit.isBarrel;
 
       n_l1eg = caloHit.n_l1eg;
@@ -266,18 +271,38 @@ private:
       l1eg_trkIso = caloHit.l1eg_trkIso;
       l1eg_standaloneSS = caloHit.l1eg_standaloneSS;
       l1eg_standaloneIso = caloHit.l1eg_standaloneIso;
+      
+      peak_total_et = total_tower_et;
       seed = caloHit;
+
+      njets = 0;
+      
     }
     void addTower( SimpleCaloHit & caloHit) {
       ecal_tower_et += caloHit.ecal_tower_et;
       hcal_tower_et += caloHit.hcal_tower_et;
       l1eg_tower_et += caloHit.l1eg_tower_et;
+      total_tower_et += caloHit.total_tower_et;
+      if (caloHit.total_tower_et > peak_total_et) peak_total_et = caloHit.total_tower_et;
     }
-  }
+    void addJet(l1CaloJetObj & jet) {
+      jetlist[njets] = jet;
+      njets++;
+    }
+  };
 
   void get3x3FirstPass(vector<SimpleCaloHit> l1CaloTowers,vector<Tower3x3> tower3x3s);
   void get9x9SecondPass(vector<Tower3x3> tower3x3s,vector< l1CaloJetObj > l1CaloJetObjs);
   void getOverlapThirdPass(vector<Tower3x3> tower3x3s,vector< l1CaloJetObj > l1CaloJetObjs);
+
+  void SetJetSeed(l1CaloJetObj & jet,Tower3x3 & tower3x3);
+  bool AddJetCluster(l1CaloJetObj & jet,Tower3x3 & tower3x3,int dphi,int deta);
+  void CheckOverlap(l1CaloJetObj & jet,Tower3x3 & tower3x3);
+  void RemoveJetCluster(l1CaloJetObj & jet,Tower3x3 & tower3x3);
+
+  inline int getTowerIndex(int iphi,int ieta) { return 136*( (iphi-1)/4 ) + (iphi-1)%4 + (ieta-1)*4; }
+  inline int getTower3x3Index(int iphi,int ieta) { return (iphi-1)/3 + 8*( ieta/3 ); }
+  
 };
 
 L1CaloJetProducer::L1CaloJetProducer(const edm::ParameterSet& iConfig) :
@@ -508,10 +533,211 @@ L1CaloJetProducer::L1CaloJetProducer(const edm::ParameterSet& iConfig) :
   if (debug) printf("\nL1CaloJetProducer end\n");
 }
 
+void L1CaloJetProducer::SetJetSeed(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3) {
+  caloJetObj.isSet = true;
+  // 3 4-vectors for ECAL, HCAL, ECAL+HCAL for adding together
+  reco::Candidate::PolarLorentzVector hcalP4( tower3x3.hcal_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector ecalP4( tower3x3.ecal_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector l1egP4( tower3x3.l1eg_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector totalP4( tower3x3.total_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  
+  if (hcalP4.pt() > 0)
+    {
+      caloJetObj.hcal_nHits++;
+      caloJetObj.hcalJetCluster += hcalP4;
+      caloJetObj.hcalJetClusterET += tower3x3.hcal_tower_et;
+    }
+  if (ecalP4.pt() > 0) 
+    {
+      caloJetObj.ecal_nHits++;
+      caloJetObj.ecalJetCluster += ecalP4;
+      caloJetObj.ecalJetClusterET += tower3x3.ecal_tower_et;
+    }
+  if (l1egP4.pt() > 0) 
+    {
+      caloJetObj.l1eg_nHits++;
+      caloJetObj.l1egJetCluster += l1egP4;
+      caloJetObj.l1egJetClusterET += tower3x3.l1eg_tower_et;
+      caloJetObj.l1eg_nL1EGs += tower3x3.n_l1eg;
+      
+      caloJetObj.l1eg_nL1EGs_standaloneSS += tower3x3.l1eg_standaloneSS;
+      caloJetObj.l1eg_nL1EGs_standaloneIso += tower3x3.l1eg_standaloneIso;
+      caloJetObj.l1eg_nL1EGs_trkMatchSS += tower3x3.l1eg_trkSS;
+      caloJetObj.l1eg_nL1EGs_trkMatchIso += tower3x3.l1eg_trkIso;
+
+      if (tower3x3.isBarrel)
+	{
+	  // For decay mode related checks with CaloTaus
+	  // only applicable in the barrel at the moment:
+	  // l1eg pt, HCAL ET, ECAL ET, dEta, dPhi, trkSS, trkIso, standaloneSS, standaloneIso
+	  std::vector< float > l1EG_info = {float(l1egP4.pt()), float(hcalP4.pt()), float(ecalP4.pt()), 0., 0., float(tower3x3.l1eg_trkSS),
+					    float(tower3x3.l1eg_trkIso), float(tower3x3.l1eg_standaloneSS), float(tower3x3.l1eg_standaloneIso)};
+	  if (l1EG_info[1] / (l1EG_info[0] + l1EG_info[2]) < 0.25)
+	    {
+	      caloJetObj.n_l1eg_HoverE_LessThreshold++;
+	    }
+	  caloJetObj.associated_l1EGs.push_back( l1EG_info );
+	}
+
+    }
+  if (totalP4.pt() > 0) 
+    {
+      caloJetObj.total_nHits++;
+      caloJetObj.jetCluster += totalP4;
+      caloJetObj.jetClusterET += tower3x3.total_tower_et;
+      caloJetObj.seedTower += totalP4;
+      caloJetObj.seedTowerET += tower3x3.total_tower_et;
+    }
+
+
+  caloJetObj.seed_iEta = tower3x3.tower_iEta;
+  caloJetObj.seed_iPhi = tower3x3.tower_iPhi;
+
+
+  if (debug) printf(" -- hit %i, seeding input     p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, tower3x3.total_tower_et, tower3x3.tower_eta, tower3x3.tower_phi);
+  if (debug) printf(" -- hit %i, seeding input2    p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, totalP4.pt(), totalP4.eta(), totalP4.phi());
+  if (debug) printf(" -- hit %i, seeding reslt tot p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
+
+  // Need to add the seed energy to the dR rings
+  caloJetObj.hcal_seed += hcalP4.pt();
+  caloJetObj.hcal_3x5 += hcalP4.pt();
+  caloJetObj.hcal_7x7 += hcalP4.pt();
+  caloJetObj.ecal_seed += ecalP4.pt();
+  caloJetObj.ecal_3x5 += ecalP4.pt();
+  caloJetObj.ecal_7x7 += ecalP4.pt();
+  caloJetObj.l1eg_seed += l1egP4.pt();
+  caloJetObj.l1eg_3x5 += l1egP4.pt();
+  caloJetObj.l1eg_7x7 += l1egP4.pt();
+  caloJetObj.total_seed += totalP4.pt();
+  caloJetObj.total_3x5 += totalP4.pt();
+  caloJetObj.total_7x7 += totalP4.pt();
+  caloJetObj.peak_total_et = totalP4.pt();
+}
+
+bool L1CaloJetProducer::AddJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3,int d_iPhi,int d_iEta) {
+  // Unused l1CaloTowers which are not the initial seed
+  // Depending on seed and tower locations calculate iEta/iPhi or eta/phi comparisons.
+  // The defaults of 99 will automatically fail comparisons for the incorrect regions.
+  
+  if ( d_iPhi > 0 || (d_iPhi == 0 && d_iEta > 0) )
+    if ( tower3x3.peak_total_et > caloJetObj.peak_total_et )
+      return false;
+  if ( d_iPhi < 0 || (d_iPhi == 0  && d_iEta < 0) )
+    if ( tower3x3.peak_total_et >= caloJetObj.peak_total_et )
+      return false;
+  
+  // 7x7 HCAL Trigger Towers
+  // If seeded in barrel and hit is barrel then we can compare iEta/iPhi, else need to use eta/phi
+
+  // 3 4-vectors for ECAL, HCAL, ECAL+HCAL for adding together
+  reco::Candidate::PolarLorentzVector hcalP4( tower3x3.hcal_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector ecalP4( tower3x3.ecal_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector l1egP4( tower3x3.l1eg_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector totalP4( tower3x3.total_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+
+  if (hcalP4.pt() > 0)
+    {
+      caloJetObj.hcal_nHits++;
+      caloJetObj.hcalJetCluster += hcalP4;
+      caloJetObj.hcalJetClusterET += tower3x3.hcal_tower_et;
+    }
+  if (ecalP4.pt() > 0) 
+    {
+      caloJetObj.ecal_nHits++;
+      caloJetObj.ecalJetCluster += ecalP4;
+      caloJetObj.ecalJetClusterET += tower3x3.ecal_tower_et;
+    }
+  if (l1egP4.pt() > 0) 
+    {
+      caloJetObj.l1eg_nHits++;
+      caloJetObj.l1egJetCluster += l1egP4;
+      caloJetObj.l1egJetClusterET += tower3x3.l1eg_tower_et;
+      caloJetObj.l1eg_nL1EGs += tower3x3.n_l1eg;
+    }
+  if (totalP4.pt() > 0) 
+    {
+      caloJetObj.total_nHits++;
+      caloJetObj.jetCluster += totalP4;
+      caloJetObj.jetClusterET += tower3x3.total_tower_et;
+    }
+
+
+  if (debug) printf(" ---- hit %i input     p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, totalP4.pt(), totalP4.eta(), totalP4.phi());
+  if (debug) printf(" ---- hit %i resulting p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
+
+  caloJetObj.hcal_seed += hcalP4.pt();
+  caloJetObj.ecal_seed += ecalP4.pt();
+  caloJetObj.l1eg_seed += l1egP4.pt();
+  caloJetObj.total_seed += totalP4.pt();
+
+  return true;
+}
+
+void L1CaloJetProducer::CheckOverlap(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3) {
+  for (l1CaloJetObj jet : tower3x3.jetlist) {
+    if ( !caloJetObj.equals(jet) ) {
+      if (caloJetObj.jetClusterET < jet.jetClusterET) {
+	RemoveJetCluster(caloJetObj,tower3x3);
+	return;
+      }
+    }
+  }
+}
+
+void L1CaloJetProducer::RemoveJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3) {
+  // Unused l1CaloTowers which are not the initial seed
+  // Depending on seed and tower locations calculate iEta/iPhi or eta/phi comparisons.
+  // The defaults of 99 will automatically fail comparisons for the incorrect regions.
+  
+  // 7x7 HCAL Trigger Towers
+  // If seeded in barrel and hit is barrel then we can compare iEta/iPhi, else need to use eta/phi
+
+  // 3 4-vectors for ECAL, HCAL, ECAL+HCAL for adding together
+  reco::Candidate::PolarLorentzVector hcalP4( tower3x3.hcal_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector ecalP4( tower3x3.ecal_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector l1egP4( tower3x3.l1eg_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+  reco::Candidate::PolarLorentzVector totalP4( tower3x3.total_tower_et, tower3x3.tower_eta, tower3x3.tower_phi, 0.);
+
+  if (hcalP4.pt() > 0)
+    {
+      caloJetObj.hcal_nHits--;
+      caloJetObj.hcalJetCluster -= hcalP4;
+      caloJetObj.hcalJetClusterET -= tower3x3.hcal_tower_et;
+    }
+  if (ecalP4.pt() > 0) 
+    {
+      caloJetObj.ecal_nHits--;
+      caloJetObj.ecalJetCluster -= ecalP4;
+      caloJetObj.ecalJetClusterET -= tower3x3.ecal_tower_et;
+    }
+  if (l1egP4.pt() > 0) 
+    {
+      caloJetObj.l1eg_nHits--;
+      caloJetObj.l1egJetCluster -= l1egP4;
+      caloJetObj.l1egJetClusterET -= tower3x3.l1eg_tower_et;
+      caloJetObj.l1eg_nL1EGs -= tower3x3.n_l1eg;
+    }
+  if (totalP4.pt() > 0) 
+    {
+      caloJetObj.total_nHits--;
+      caloJetObj.jetCluster -= totalP4;
+      caloJetObj.jetClusterET -= tower3x3.total_tower_et;
+    }
+
+
+  if (debug) printf(" ---- hit %i input     p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, totalP4.pt(), totalP4.eta(), totalP4.phi());
+  if (debug) printf(" ---- hit %i resulting p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
+
+  caloJetObj.hcal_seed -= hcalP4.pt();
+  caloJetObj.ecal_seed -= ecalP4.pt();
+  caloJetObj.l1eg_seed -= l1egP4.pt();
+  caloJetObj.total_seed -= totalP4.pt();
+}
+
 void L1CaloJetProducer::get3x3FirstPass(vector<SimpleCaloHit> l1CaloTowers,vector<Tower3x3> tower3x3s) {
   for (int ieta = 1; ieta <= 34; ieta += 3) {
     for (int iphi = 2; iphi <= 72; iphi += 3) {
-      auto l1CaloTower = l1CaloTowers[ getTowerIndex(iphi,ieta) ]
+      auto l1CaloTower = l1CaloTowers[ getTowerIndex(iphi,ieta) ];
       Tower3x3 tower3x3;
       tower3x3.setSeed( l1CaloTower );
 
@@ -526,7 +752,7 @@ void L1CaloJetProducer::get3x3FirstPass(vector<SimpleCaloHit> l1CaloTowers,vecto
 	  tower3x3.addTower( l1CaloTower );
 	}
       }
-      tower3x3s.push_back(&tower3x3)
+      tower3x3s.push_back(tower3x3);
     }
   }
 }
@@ -535,9 +761,9 @@ void L1CaloJetProducer::get9x9SecondPass(vector<Tower3x3> tower3x3s,vector< l1Ca
   for (int ieta = 1; ieta <= 34; ieta += 3) {
     for (int iphi = 2; iphi <= 72; iphi += 3) {
       auto& tower3x3 = tower3x3s[ getTower3x3Index(iphi,ieta) ];
-      if (tower3x3.highest_et < EtMinForSeedHit) continue;
+      if (tower3x3.peak_total_et < EtMinForSeedHit) continue;
       l1CaloJetObj caloJet;
-      setSeed( caloJet,tower3x3 );
+      SetJetSeed( caloJet,tower3x3 );
       bool valid = true;
 
       for (int deta = -1; deta <= 1; deta++) {
@@ -548,7 +774,7 @@ void L1CaloJetProducer::get9x9SecondPass(vector<Tower3x3> tower3x3s,vector< l1Ca
 	  if (nphi <= 0 || nphi > 72) continue;
 	  if ( deta == 0 && dphi == 0 ) continue;
 	  tower3x3 = tower3x3s[ getTower3x3Index(nphi,neta) ];
-	  valid = addCluster( caloJet,tower3x3,dphi,deta );
+	  valid = AddJetCluster( caloJet,tower3x3,dphi,deta );
 	  if (!valid) break;
 	}
 	if (!valid) break;
@@ -564,17 +790,16 @@ void L1CaloJetProducer::getOverlapThirdPass(vector<Tower3x3> tower3x3s,vector< l
   for (auto& caloJet : l1CaloJetObjs) {
     
     for (int deta = -1; deta <= 1; deta++) {
-      int neta = caloJet.iEta + deta;
+      int neta = caloJet.seed_iEta + deta;
       if (neta <= 0 || neta > 34) continue;
       for (int dphi = -1; dphi <= 1; dphi++) {
-	int nphi = caloJet.iPhi + dphi;
+	int nphi = caloJet.seed_iPhi + dphi;
 	if (nphi <= 0 || nphi > 72) continue;
 	if ( deta == 0 && dphi == 0 ) continue;
 	auto& tower3x3 = tower3x3s[ getTower3x3Index(nphi,neta) ];
-	checkOverlap( caloJet,tower3x3 );
+	CheckOverlap( caloJet,tower3x3 );
       }
     }
-    
   }
 }
 
@@ -643,253 +868,15 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
   std::map<std::string, float> params;
 
   std::vector< l1CaloJetObj > l1CaloJetObjs;
+  std::vector< Tower3x3 > tower3x3s;
 
-  // Count the number of unused HCAL TPs so we can stop while loop after done.
-  // Clustering can also stop once there are no seed hits >= EtMinForSeedHit
-  int n_towers = l1CaloTowers.size();
-  int n_stale = 0;
-  bool caloJetClusteringFinished = false;
-  while (!caloJetClusteringFinished && n_towers != n_stale)
-    {
-
-      l1CaloJetObj caloJetObj;
-      caloJetObj.Init();
-
-      // First find highest ET ECAL+HCAL+L1EGs tower and use to seed the 9x9 Jet
-      int cnt = 0;
-      for (auto &l1CaloTower : l1CaloTowers)
-        {
-
-	  cnt++;
-	  if (l1CaloTower.stale) continue; // skip l1CaloTowers which are already used
-
-	  if (caloJetObj.jetClusterET == 0.0) // this is the first l1CaloTower to seed the jet
-            {
-	      // Check if the leading unused tower has ET < min for seeding a jet.
-	      // If so, stop jet clustering
-	      if (l1CaloTower.total_tower_et < EtMinForSeedHit)
-                {
-		  caloJetClusteringFinished = true;
-		  continue;
-                }
-	      l1CaloTower.stale = true;
-	      n_stale++;
-
-	      // Set seed location needed for delta iEta/iPhi, eta/phi comparisons later
-	      if (l1CaloTower.isBarrel) caloJetObj.barrelSeeded = true;
-	      else caloJetObj.barrelSeeded = false;
-
-	      // 3 4-vectors for ECAL, HCAL, ECAL+HCAL for adding together
-	      reco::Candidate::PolarLorentzVector hcalP4( l1CaloTower.hcal_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-	      reco::Candidate::PolarLorentzVector ecalP4( l1CaloTower.ecal_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-	      reco::Candidate::PolarLorentzVector l1egP4( l1CaloTower.l1eg_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-	      reco::Candidate::PolarLorentzVector totalP4( l1CaloTower.total_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-
-	      if (hcalP4.pt() > 0)
-                {
-		  caloJetObj.hcal_nHits++;
-		  caloJetObj.hcalJetCluster += hcalP4;
-		  caloJetObj.hcalJetClusterET += l1CaloTower.hcal_tower_et;
-                }
-	      if (ecalP4.pt() > 0) 
-                {
-		  caloJetObj.ecal_nHits++;
-		  caloJetObj.ecalJetCluster += ecalP4;
-		  caloJetObj.ecalJetClusterET += l1CaloTower.ecal_tower_et;
-                }
-	      if (l1egP4.pt() > 0) 
-                {
-		  caloJetObj.l1eg_nHits++;
-		  caloJetObj.l1egJetCluster += l1egP4;
-		  caloJetObj.l1egJetClusterET += l1CaloTower.l1eg_tower_et;
-		  caloJetObj.l1eg_nL1EGs += l1CaloTower.n_l1eg;
-
-		  caloJetObj.l1eg_nL1EGs_standaloneSS += l1CaloTower.l1eg_standaloneSS;
-		  caloJetObj.l1eg_nL1EGs_standaloneIso += l1CaloTower.l1eg_standaloneIso;
-		  caloJetObj.l1eg_nL1EGs_trkMatchSS += l1CaloTower.l1eg_trkSS;
-		  caloJetObj.l1eg_nL1EGs_trkMatchIso += l1CaloTower.l1eg_trkIso;
-
-		  if (l1CaloTower.isBarrel)
-                    {
-		      // For decay mode related checks with CaloTaus
-		      // only applicable in the barrel at the moment:
-		      // l1eg pt, HCAL ET, ECAL ET, dEta, dPhi, trkSS, trkIso, standaloneSS, standaloneIso
-		      std::vector< float > l1EG_info = {float(l1egP4.pt()), float(hcalP4.pt()), float(ecalP4.pt()), 0., 0., float(l1CaloTower.l1eg_trkSS),
-							float(l1CaloTower.l1eg_trkIso), float(l1CaloTower.l1eg_standaloneSS), float(l1CaloTower.l1eg_standaloneIso)};
-		      if (l1EG_info[1] / (l1EG_info[0] + l1EG_info[2]) < 0.25)
-                        {
-			  caloJetObj.n_l1eg_HoverE_LessThreshold++;
-                        }
-		      caloJetObj.associated_l1EGs.push_back( l1EG_info );
-                    }
-
-                }
-	      if (totalP4.pt() > 0) 
-                {
-		  caloJetObj.total_nHits++;
-		  caloJetObj.jetCluster += totalP4;
-		  caloJetObj.jetClusterET += l1CaloTower.total_tower_et;
-		  caloJetObj.seedTower += totalP4;
-		  caloJetObj.seedTowerET += l1CaloTower.total_tower_et;
-                }
-
-
-	      caloJetObj.seed_iEta = l1CaloTower.tower_iEta;
-	      caloJetObj.seed_iPhi = l1CaloTower.tower_iPhi;
-
-
-	      if (debug) printf(" -- hit %i, seeding input     p4 pt %f eta %f phi %f\n", cnt, l1CaloTower.total_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi);
-	      if (debug) printf(" -- hit %i, seeding input2    p4 pt %f eta %f phi %f\n", cnt, totalP4.pt(), totalP4.eta(), totalP4.phi());
-	      if (debug) printf(" -- hit %i, seeding reslt tot p4 pt %f eta %f phi %f\n", cnt, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
-
-	      // Need to add the seed energy to the dR rings
-	      caloJetObj.hcal_seed += hcalP4.pt();
-	      caloJetObj.hcal_3x5 += hcalP4.pt();
-	      caloJetObj.hcal_7x7 += hcalP4.pt();
-	      caloJetObj.ecal_seed += ecalP4.pt();
-	      caloJetObj.ecal_3x5 += ecalP4.pt();
-	      caloJetObj.ecal_7x7 += ecalP4.pt();
-	      caloJetObj.l1eg_seed += l1egP4.pt();
-	      caloJetObj.l1eg_3x5 += l1egP4.pt();
-	      caloJetObj.l1eg_7x7 += l1egP4.pt();
-	      caloJetObj.total_seed += totalP4.pt();
-	      caloJetObj.total_3x5 += totalP4.pt();
-	      caloJetObj.total_7x7 += totalP4.pt();
-	      continue;
-            }
-
-	  // Unused l1CaloTowers which are not the initial seed
-	  // Depending on seed and tower locations calculate iEta/iPhi or eta/phi comparisons.
-	  // The defaults of 99 will automatically fail comparisons for the incorrect regions.
-	  int hit_iPhi = 99;
-	  int d_iEta = 99;
-	  int d_iPhi = 99;
-	  float d_eta = 99;
-	  float d_phi = 99;
-	  if ( caloJetObj.barrelSeeded && l1CaloTower.isBarrel ) // use iEta/iPhi comparisons 
-            {
-	      hit_iPhi = l1CaloTower.tower_iPhi;
-	      d_iEta = tower_diEta( caloJetObj.seed_iEta, l1CaloTower.tower_iEta );
-	      d_iPhi = tower_diPhi( caloJetObj.seed_iPhi, hit_iPhi );
-            }
-	  else // either seed or tower are in HGCal or HF, use eta/phi
-            {
-	      d_eta = caloJetObj.seedTower.eta() - l1CaloTower.tower_eta;
-	      d_phi = reco::deltaPhi( caloJetObj.seedTower.phi(), l1CaloTower.tower_phi );
-            }
-
-	  // 7x7 HCAL Trigger Towers
-	  // If seeded in barrel and hit is barrel then we can compare iEta/iPhi, else need to use eta/phi
-	  // in HGCal / transition region
-	  if ( (abs( d_iEta ) <= 3 && abs( d_iPhi ) <= 3) ||
-	       ( fabs( d_eta ) < 0.3 && fabs( d_phi ) < 0.3 ) )
-            {
-
-	      l1CaloTower.stale = true;
-	      n_stale++;
-
-	      // 3 4-vectors for ECAL, HCAL, ECAL+HCAL for adding together
-	      reco::Candidate::PolarLorentzVector hcalP4( l1CaloTower.hcal_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-	      reco::Candidate::PolarLorentzVector ecalP4( l1CaloTower.ecal_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-	      reco::Candidate::PolarLorentzVector l1egP4( l1CaloTower.l1eg_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-	      reco::Candidate::PolarLorentzVector totalP4( l1CaloTower.total_tower_et, l1CaloTower.tower_eta, l1CaloTower.tower_phi, 0.);
-
-	      if (hcalP4.pt() > 0)
-                {
-		  caloJetObj.hcal_nHits++;
-		  caloJetObj.hcalJetCluster += hcalP4;
-		  caloJetObj.hcalJetClusterET += l1CaloTower.hcal_tower_et;
-                }
-	      if (ecalP4.pt() > 0) 
-                {
-		  caloJetObj.ecal_nHits++;
-		  caloJetObj.ecalJetCluster += ecalP4;
-		  caloJetObj.ecalJetClusterET += l1CaloTower.ecal_tower_et;
-                }
-	      if (l1egP4.pt() > 0) 
-                {
-		  caloJetObj.l1eg_nHits++;
-		  caloJetObj.l1egJetCluster += l1egP4;
-		  caloJetObj.l1egJetClusterET += l1CaloTower.l1eg_tower_et;
-		  caloJetObj.l1eg_nL1EGs += l1CaloTower.n_l1eg;
-                }
-	      if (totalP4.pt() > 0) 
-                {
-		  caloJetObj.total_nHits++;
-		  caloJetObj.jetCluster += totalP4;
-		  caloJetObj.jetClusterET += l1CaloTower.total_tower_et;
-                }
-
-
-	      if (debug) printf(" ---- hit %i input     p4 pt %f eta %f phi %f\n", cnt, totalP4.pt(), totalP4.eta(), totalP4.phi());
-	      if (debug) printf(" ---- hit %i resulting p4 pt %f eta %f phi %f\n", cnt, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
-
-
-
-	      if ( (abs( d_iEta ) == 0    && abs( d_iPhi ) == 0) ||
-		   ( fabs( d_eta ) < 0.043 && fabs( d_phi ) < 0.043 ) )
-                {
-		  caloJetObj.hcal_seed += hcalP4.pt();
-		  caloJetObj.ecal_seed += ecalP4.pt();
-		  caloJetObj.l1eg_seed += l1egP4.pt();
-		  caloJetObj.total_seed += totalP4.pt();
-                }
-	      if ( (abs( d_iEta ) <= 1 && abs( d_iPhi ) <= 2) || 
-		   ( fabs( d_eta ) < 0.13 && fabs( d_phi ) < 0.22 ) )
-                {
-		  caloJetObj.hcal_3x5 += hcalP4.pt();
-		  caloJetObj.ecal_3x5 += ecalP4.pt();
-		  caloJetObj.l1eg_3x5 += l1egP4.pt();
-		  caloJetObj.total_3x5 += totalP4.pt();
-
-		  // Do this for 3x5 only
-		  if (l1egP4.pt() > 0) 
-                    {
-		      caloJetObj.l1eg_nL1EGs_standaloneSS += l1CaloTower.l1eg_standaloneSS;
-		      caloJetObj.l1eg_nL1EGs_standaloneIso += l1CaloTower.l1eg_standaloneIso;
-		      caloJetObj.l1eg_nL1EGs_trkMatchSS += l1CaloTower.l1eg_trkSS;
-		      caloJetObj.l1eg_nL1EGs_trkMatchIso += l1CaloTower.l1eg_trkIso;
-
-		      // For decay mode related checks with CaloTaus
-		      // only applicable in the barrel at the moment:
-		      // l1eg pt, HCAL ET, ECAL ET, d_iEta, d_iPhi, trkSS, trkIso, standaloneSS, standaloneIso
-		      std::vector< float > l1EG_info = {float(l1egP4.pt()), float(hcalP4.pt()), float(ecalP4.pt()),
-							float(d_iEta), float(d_iPhi), float(l1CaloTower.l1eg_trkSS), float(l1CaloTower.l1eg_trkIso),
-							float(l1CaloTower.l1eg_standaloneSS), float(l1CaloTower.l1eg_standaloneIso)};
-		      if (l1EG_info[1] / (l1EG_info[0] + l1EG_info[2]) < 0.25)
-                        {
-			  caloJetObj.n_l1eg_HoverE_LessThreshold++;
-                        }
-		      caloJetObj.associated_l1EGs.push_back( l1EG_info );
-                    }
-
-                }
-	      if ( (abs( d_iEta ) <= 3 && abs( d_iPhi ) <= 3) || 
-		   ( fabs( d_eta ) < 0.3 && fabs( d_phi ) < 0.3 ) )
-                {
-		  caloJetObj.hcal_7x7 += hcalP4.pt();
-		  caloJetObj.ecal_7x7 += ecalP4.pt();
-		  caloJetObj.l1eg_7x7 += l1egP4.pt();
-		  caloJetObj.total_7x7 += totalP4.pt();
-                }
-            }
-        }
-
-      if (caloJetObj.jetClusterET > 0.0)
-        {
-	  l1CaloJetObjs.push_back( caloJetObj );
-        }
-
-    } // end while loop of HCAL TP clustering
-        
-
-
+  get3x3FirstPass(l1CaloTowers,tower3x3s);
+  get9x9SecondPass(tower3x3s,l1CaloJetObjs);
+  getOverlapThirdPass(tower3x3s,l1CaloJetObjs);
 
   // Sort JetClusters so we can begin with the highest pt for next step of jet clustering
   std::sort(begin(l1CaloJetObjs), end(l1CaloJetObjs), [](const l1CaloJetObj& a,
 							 const l1CaloJetObj& b){return a.jetClusterET > b.jetClusterET;});
-
-
 
   /**************************************************************************
    * Progress to adding L1EGs built from ECAL TPs  9x9 grid.
@@ -902,10 +889,6 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
   //std::cout << " - Input L1EGs: " << crystalClustersVect.size() << std::endl;
   for (auto &caloJetObj : l1CaloJetObjs)
     {
-
-
-
-
       params["seed_pt"] = caloJetObj.seedTowerET;
       params["seed_eta"] = caloJetObj.seedTower.eta();
       params["seed_phi"] = caloJetObj.seedTower.phi();
@@ -946,9 +929,9 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
       //// return -9 for energy and dR values for ecalJet as defaults
       float hovere = -9;
       if (caloJetObj.ecalJetClusterET > 0.0)
-        {
+	{
 	  hovere = caloJetObj.hcalJetClusterET / ( caloJetObj.ecalJetClusterET + caloJetObj.l1egJetClusterET );
-        }
+	}
 
 
       params["jet_pt"] = caloJetObj.jetClusterET;
@@ -994,7 +977,7 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 
       // Only store jets passing ET threshold
       if (params["jet_pt_calibration"] >= EtMinForCollection)
-        {
+	{
 	  L1CaloJetsNoCuts->push_back( caloJet );
 	  //L1CaloJetsWithCuts->push_back( caloJet );
 	  reco::Candidate::PolarLorentzVector jet_p4 = reco::Candidate::PolarLorentzVector( 
@@ -1003,20 +986,20 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 
 	  if (debug) printf("Made a Jet, eta %f phi %f pt %f calibrated pt %f\n", caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi(), caloJetObj.jetClusterET, params["jet_pt_calibration"] );
 
-        }
+	}
 
       // Only store taus passing ET threshold
       if (params["tau_pt"] >= EtMinForTauCollection)
-        {
+	{
 	  short int tau_ieta = caloJetObj.seed_iEta;
 	  short int tau_iphi = caloJetObj.seed_iPhi;
 	  short int raw_et = params["total_3x5"];
 	  short int iso_et = params["tau_iso_et"];
 	  bool hasEM = false;
 	  if (params["l1eg_3x5"] > 0. || params["ecal_3x5"] > 0.)
-            {
+	    {
 	      hasEM = true;
-            }
+	    }
 	  int tau_qual = int(params["loose_iso_tau_wp"]);
 
 	  reco::Candidate::PolarLorentzVector tau_p4 = reco::Candidate::PolarLorentzVector( 
@@ -1033,7 +1016,7 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 	  if (debug) printf("Made a Tau, eta %f phi %f pt %i calibrated pt %f\n", l1Tau.eta(), l1Tau.phi(), l1Tau.rawEt(), l1Tau.pt() );
 
 
-        }
+	}
 
 
     } // end jetClusters loop
@@ -1126,24 +1109,24 @@ L1CaloJetProducer::get_hcal_calibration( float &jet_pt, float &ecal_pt,
     {
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < emFractionBinsBarrel.size(); i++)
-        {
+	{
 	  if(em_frac <= emFractionBinsBarrel.at(i)) break;
 	  em_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < absEtaBinsBarrel.size(); i++)
-        {
+	{
 	  if(abs_eta <= absEtaBinsBarrel.at(i)) break;
 	  eta_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < jetPtBins.size(); i++)
-        {
+	{
 	  if(tmp_jet_pt <= jetPtBins.at(i)) break;
 	  pt_index++;
-        }
+	}
       //printf("Barrel calib emId %i etaId %i jetPtId %i\n",int(em_index),int(eta_index),int(pt_index));
       calib = calibrationsBarrel[ eta_index ][ em_index ][ pt_index ];
     } // end Barrel
@@ -1151,24 +1134,24 @@ L1CaloJetProducer::get_hcal_calibration( float &jet_pt, float &ecal_pt,
     {
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < emFractionBinsHGCal.size(); i++)
-        {
+	{
 	  if(em_frac <= emFractionBinsHGCal.at(i)) break;
 	  em_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < absEtaBinsHGCal.size(); i++)
-        {
+	{
 	  if(abs_eta <= absEtaBinsHGCal.at(i)) break;
 	  eta_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < jetPtBins.size(); i++)
-        {
+	{
 	  if(tmp_jet_pt <= jetPtBins.at(i)) break;
 	  pt_index++;
-        }
+	}
       //printf("HGCal calib emId %i etaId %i jetPtId %i\n",int(em_index),int(eta_index),int(pt_index));
       calib = calibrationsHGCal[ eta_index ][ em_index ][ pt_index ];
     } // end HGCal
@@ -1176,24 +1159,24 @@ L1CaloJetProducer::get_hcal_calibration( float &jet_pt, float &ecal_pt,
     {
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < emFractionBinsHF.size(); i++)
-        {
+	{
 	  if(em_frac <= emFractionBinsHF.at(i)) break;
 	  em_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < absEtaBinsHF.size(); i++)
-        {
+	{
 	  if(abs_eta <= absEtaBinsHF.at(i)) break;
 	  eta_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < jetPtBins.size(); i++)
-        {
+	{
 	  if(tmp_jet_pt <= jetPtBins.at(i)) break;
 	  pt_index++;
-        }
+	}
       //printf("HF calib emId %i etaId %i jetPtId %i\n",int(em_index),int(eta_index),int(pt_index));
       calib = calibrationsHF[ eta_index ][ em_index ][ pt_index ];
     } // end HF
@@ -1236,37 +1219,37 @@ L1CaloJetProducer::get_tau_pt_calibration( float &tau_pt, float &ecal_pt,
     {
       // Start loop checking 1st value
       for( unsigned int i = 0; i < tauL1egValuesBarrel.size(); i++)
-        {
+	{
 	  if(n_L1EGs == tauL1egValuesBarrel.at(i)) break;
 	  if(tauL1egValuesBarrel.at(i) == tauL1egValuesBarrel.back()) break; // to preven incrementing on last one
 	  n_L1EG_index++;
-        }
+	}
 
       // Find key value pair matching n L1EGs
       for( auto &l1eg_info : tauL1egInfoMapBarrel )
-        {
+	{
 	  if(l1eg_info.first != double(n_L1EG_index)) continue;
 	  // Start loop checking 2nd value
 	  for( unsigned int i = 1; i < l1eg_info.second.size(); i++)
-            {
+	    {
 	      if(em_frac <= l1eg_info.second.at(i)) break;
 	      em_index++;
-            }
-        }
+	    }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < tauAbsEtaBinsBarrel.size(); i++)
-        {
+	{
 	  if(abs_eta <= tauAbsEtaBinsBarrel.at(i)) break;
 	  eta_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < tauPtBins.size(); i++)
-        {
+	{
 	  if(tmp_tau_pt <= tauPtBins.at(i)) break;
 	  pt_index++;
-        }
+	}
       //printf("Barrel tau calib etaId %i nL1EG Id %i emId %i tauPtId %i\n",int(eta_index),int(n_L1EG_index),int(em_index),int(pt_index));
       calib = tauPtCalibrationsBarrel[ eta_index ][ n_L1EG_index ][ em_index ][ pt_index ];
     } // end Barrel
@@ -1274,37 +1257,37 @@ L1CaloJetProducer::get_tau_pt_calibration( float &tau_pt, float &ecal_pt,
     {
       // Start loop checking 1st value
       for( unsigned int i = 0; i < tauL1egValuesHGCal.size(); i++)
-        {
+	{
 	  if(n_L1EGs == tauL1egValuesHGCal.at(i)) break;
 	  if(tauL1egValuesHGCal.at(i) == tauL1egValuesHGCal.back()) break; // to preven incrementing on last one
 	  n_L1EG_index++;
-        }
+	}
 
       // Find key value pair matching n L1EGs
       for( auto &l1eg_info : tauL1egInfoMapHGCal )
-        {
+	{
 	  if(l1eg_info.first != double(n_L1EG_index)) continue;
 	  // Start loop checking 2nd value
 	  for( unsigned int i = 1; i < l1eg_info.second.size(); i++)
-            {
+	    {
 	      if(em_frac <= l1eg_info.second.at(i)) break;
 	      em_index++;
-            }
-        }
+	    }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < tauAbsEtaBinsHGCal.size(); i++)
-        {
+	{
 	  if(abs_eta <= tauAbsEtaBinsHGCal.at(i)) break;
 	  eta_index++;
-        }
+	}
 
       // Start loop checking 2nd value
       for( unsigned int i = 1; i < tauPtBins.size(); i++)
-        {
+	{
 	  if(tmp_tau_pt <= tauPtBins.at(i)) break;
 	  pt_index++;
-        }
+	}
       //printf("HGCal tau calib etaId %i nL1EG Id %i emId %i tauPtId %i\n",int(eta_index),int(n_L1EG_index),int(em_index),int(pt_index));
       calib = tauPtCalibrationsHGCal[ eta_index ][ n_L1EG_index ][ em_index ][ pt_index ];
     } // end HGCal
@@ -1340,25 +1323,25 @@ L1CaloJetProducer::loose_iso_tau_wp( float &tau_pt, float &tau_iso_et, float &ta
   if (fabs(tau_eta) < 1.5)
     {
       if (isoTauBarrel.Eval(tau_pt) >= (tau_iso_et / tau_pt))
-        {
+	{
 	  return 1;
-        }
+	}
       else 
-        {
+	{
 	  return 0;
-        }
+	}
     }
   // HGCal
   if (fabs(tau_eta) < 3.0)
     {
       if (isoTauHGCal.Eval(tau_pt) >= (tau_iso_et / tau_pt))
-        {
+	{
 	  return 1;
-        }
+	}
       else
-        {
+	{
 	  return 0;
-        }
+	}
     }
   // Beyond HGCal
   return 0;
