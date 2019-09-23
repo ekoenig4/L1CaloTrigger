@@ -115,6 +115,10 @@ private:
   std::vector< std::vector< std::vector< std::vector< double >>>> tauPtCalibrationsHGCal;
 
   bool debug;
+  bool debug_1;
+  bool debug_2;
+  bool debug_3;
+  
   edm::EDGetTokenT< L1CaloTowerCollection > l1TowerToken_;
   edm::Handle< L1CaloTowerCollection > l1CaloTowerHandle;
 
@@ -250,11 +254,9 @@ private:
 
   class Tower3x3 : public SimpleCaloHit{
   public:
-    static const int M_JETS = 4;
     SimpleCaloHit seed;
     float peak_total_et;
-    l1CaloJetObj jetlist[M_JETS];
-    int njets = 0;
+    vector<l1CaloJetObj> jetlist;
     void setSeed( SimpleCaloHit & caloHit ) {
       tower_iEta = caloHit.tower_iEta;
       tower_iPhi = caloHit.tower_iPhi;
@@ -274,8 +276,6 @@ private:
       
       peak_total_et = total_tower_et;
       seed = caloHit;
-
-      njets = 0;
       
     }
     void addTower( SimpleCaloHit & caloHit) {
@@ -286,22 +286,22 @@ private:
       if (caloHit.total_tower_et > peak_total_et) peak_total_et = caloHit.total_tower_et;
     }
     void addJet(l1CaloJetObj & jet) {
-      jetlist[njets] = jet;
-      njets++;
+      jetlist.push_back(jet);
     }
   };
 
-  void get3x3FirstPass(vector<SimpleCaloHit> l1CaloTowers,vector<Tower3x3> tower3x3s);
-  void get9x9SecondPass(vector<Tower3x3> tower3x3s,vector< l1CaloJetObj > l1CaloJetObjs);
-  void getOverlapThirdPass(vector<Tower3x3> tower3x3s,vector< l1CaloJetObj > l1CaloJetObjs);
+  void get3x3FirstPass(map<int,SimpleCaloHit> l1CaloTowers,map<int,Tower3x3> & tower3x3s);
+  void get9x9SecondPass(map<int,Tower3x3> & tower3x3s,vector< l1CaloJetObj > & l1CaloJetObjs);
+  void getOverlapThirdPass(map<int,Tower3x3> & tower3x3s,vector< l1CaloJetObj > & l1CaloJetObjs);
 
   void SetJetSeed(l1CaloJetObj & jet,Tower3x3 & tower3x3);
   bool AddJetCluster(l1CaloJetObj & jet,Tower3x3 & tower3x3,int dphi,int deta);
   void CheckOverlap(l1CaloJetObj & jet,Tower3x3 & tower3x3);
   void RemoveJetCluster(l1CaloJetObj & jet,Tower3x3 & tower3x3);
 
-  inline int getTowerIndex(int iphi,int ieta) { return 136*( (iphi-1)/4 ) + (iphi-1)%4 + (ieta-1)*4; }
-  inline int getTower3x3Index(int iphi,int ieta) { return (iphi-1)/3 + 8*( ieta/3 ); }
+  inline int getTowerKey(int iphi,int ieta) {
+    return 100*iphi + ieta;
+  }
   
 };
 
@@ -332,6 +332,9 @@ L1CaloJetProducer::L1CaloJetProducer(const edm::ParameterSet& iConfig) :
   tauCalibrationsHGCal(iConfig.getParameter<std::vector<double>>("tauCalibrationsHGCal")),
   tauL1egInfoHGCal(iConfig.getParameter<std::vector<edm::ParameterSet>>("tauL1egInfoHGCal")),
   debug(iConfig.getParameter<bool>("debug")),
+  debug_1(iConfig.getParameter<bool>("debug_1")),
+  debug_2(iConfig.getParameter<bool>("debug_2")),
+  debug_3(iConfig.getParameter<bool>("debug_3")),
   l1TowerToken_(consumes< L1CaloTowerCollection >(iConfig.getParameter<edm::InputTag>("l1CaloTowers")))
 
 {
@@ -593,11 +596,6 @@ void L1CaloJetProducer::SetJetSeed(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3
   caloJetObj.seed_iEta = tower3x3.tower_iEta;
   caloJetObj.seed_iPhi = tower3x3.tower_iPhi;
 
-
-  if (debug) printf(" -- hit %i, seeding input     p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, tower3x3.total_tower_et, tower3x3.tower_eta, tower3x3.tower_phi);
-  if (debug) printf(" -- hit %i, seeding input2    p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, totalP4.pt(), totalP4.eta(), totalP4.phi());
-  if (debug) printf(" -- hit %i, seeding reslt tot p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
-
   // Need to add the seed energy to the dR rings
   caloJetObj.hcal_seed += hcalP4.pt();
   caloJetObj.hcal_3x5 += hcalP4.pt();
@@ -661,14 +659,12 @@ bool L1CaloJetProducer::AddJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & tower
       caloJetObj.jetClusterET += tower3x3.total_tower_et;
     }
 
-
-  if (debug) printf(" ---- hit %i input     p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, totalP4.pt(), totalP4.eta(), totalP4.phi());
-  if (debug) printf(" ---- hit %i resulting p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
-
   caloJetObj.hcal_seed += hcalP4.pt();
   caloJetObj.ecal_seed += ecalP4.pt();
   caloJetObj.l1eg_seed += l1egP4.pt();
   caloJetObj.total_seed += totalP4.pt();
+
+  tower3x3.addJet(caloJetObj);
 
   return true;
 }
@@ -677,6 +673,7 @@ void L1CaloJetProducer::CheckOverlap(l1CaloJetObj & caloJetObj,Tower3x3 & tower3
   for (l1CaloJetObj jet : tower3x3.jetlist) {
     if ( !caloJetObj.equals(jet) ) {
       if (caloJetObj.jetClusterET < jet.jetClusterET) {
+	if (debug_3) printf("---- Removing Tower | et: %f\n",tower3x3.total_tower_et);   
 	RemoveJetCluster(caloJetObj,tower3x3);
 	return;
       }
@@ -724,22 +721,20 @@ void L1CaloJetProducer::RemoveJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & to
       caloJetObj.jetClusterET -= tower3x3.total_tower_et;
     }
 
-
-  if (debug) printf(" ---- hit %i input     p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, totalP4.pt(), totalP4.eta(), totalP4.phi());
-  if (debug) printf(" ---- hit %i resulting p4 pt %f eta %f phi %f\n", caloJetObj.total_nHits, caloJetObj.jetClusterET, caloJetObj.jetCluster.eta(), caloJetObj.jetCluster.phi());
-
   caloJetObj.hcal_seed -= hcalP4.pt();
   caloJetObj.ecal_seed -= ecalP4.pt();
   caloJetObj.l1eg_seed -= l1egP4.pt();
   caloJetObj.total_seed -= totalP4.pt();
 }
 
-void L1CaloJetProducer::get3x3FirstPass(vector<SimpleCaloHit> l1CaloTowers,vector<Tower3x3> tower3x3s) {
+void L1CaloJetProducer::get3x3FirstPass(map<int,SimpleCaloHit> l1CaloTowers,map<int,Tower3x3> & tower3x3s) {
+  if (debug_1) printf("Starting 3x3 First Pass\n");
   for (int ieta = 1; ieta <= 34; ieta += 3) {
     for (int iphi = 2; iphi <= 72; iphi += 3) {
-      auto l1CaloTower = l1CaloTowers[ getTowerIndex(iphi,ieta) ];
+      auto& l1CaloTower = l1CaloTowers[ getTowerKey(iphi,ieta) ];
       Tower3x3 tower3x3;
       tower3x3.setSeed( l1CaloTower );
+      if (debug_1) printf("Seeding Tower | iphi: %i ieta: %i et: %f peak_et: %f\n",iphi,ieta,tower3x3.total_tower_et,tower3x3.peak_total_et);
 
       for (int deta = -1; deta <= 1; deta++) {
 	int neta = ieta + deta;
@@ -748,19 +743,23 @@ void L1CaloJetProducer::get3x3FirstPass(vector<SimpleCaloHit> l1CaloTowers,vecto
 	  int nphi = iphi + dphi;
 	  if (nphi <= 0 || nphi > 72) continue;
 	  if ( deta == 0 && dphi == 0 ) continue;
-	  l1CaloTower = l1CaloTowers[ getTowerIndex(nphi,neta) ];
+	  l1CaloTower = l1CaloTowers[ getTowerKey(nphi,neta) ];
 	  tower3x3.addTower( l1CaloTower );
+	  if (debug_1) printf("---- Adding Tower | iphi: %i ieta: %i et: %f\n",nphi,neta,l1CaloTower.total_tower_et);
 	}
       }
-      tower3x3s.push_back(tower3x3);
+      if (debug_1) printf("-------- Tower3x3 | iphi: %i ieta: %i et: %f peak_et: %f\n",iphi,ieta,tower3x3.total_tower_et,tower3x3.peak_total_et);
+      tower3x3s[ getTowerKey(iphi,ieta) ] = tower3x3;
     }
   }
 }
 
-void L1CaloJetProducer::get9x9SecondPass(vector<Tower3x3> tower3x3s,vector< l1CaloJetObj > l1CaloJetObjs) {
+void L1CaloJetProducer::get9x9SecondPass(map<int,Tower3x3> & tower3x3s,vector<l1CaloJetObj> & l1CaloJetObjs) {
+  if (debug_2) printf("Starting 9x9 Second Pass\n");
   for (int ieta = 1; ieta <= 34; ieta += 3) {
     for (int iphi = 2; iphi <= 72; iphi += 3) {
-      auto& tower3x3 = tower3x3s[ getTower3x3Index(iphi,ieta) ];
+      auto& tower3x3 = tower3x3s[ getTowerKey(iphi,ieta) ];
+      if (debug_2) printf("Seeding Jet | iphi: %i ieta: %i et: %f peak_et: %f\n",iphi,ieta,tower3x3.total_tower_et,tower3x3.peak_total_et);
       if (tower3x3.peak_total_et < EtMinForSeedHit) continue;
       l1CaloJetObj caloJet;
       SetJetSeed( caloJet,tower3x3 );
@@ -773,33 +772,40 @@ void L1CaloJetProducer::get9x9SecondPass(vector<Tower3x3> tower3x3s,vector< l1Ca
 	  int nphi = iphi + 3*dphi;
 	  if (nphi <= 0 || nphi > 72) continue;
 	  if ( deta == 0 && dphi == 0 ) continue;
-	  tower3x3 = tower3x3s[ getTower3x3Index(nphi,neta) ];
+	  tower3x3 = tower3x3s[ getTowerKey(nphi,neta) ];
 	  valid = AddJetCluster( caloJet,tower3x3,dphi,deta );
+	  if (debug_2) printf("---- Add Tower | iphi: %i ieta: %i et: %f peak_et: %f valid: %i\n",nphi,neta,tower3x3.total_tower_et,tower3x3.peak_total_et,valid);
 	  if (!valid) break;
 	}
 	if (!valid) break;
       }
 
-      if (valid && caloJet.jetClusterET > 0)
-	l1CaloJetObjs.push_back(caloJet);
+      if (valid && caloJet.jetClusterET > 0) {
+	if (debug_2) printf("-------- Saving Jet | iphi: %i ieta: %i et: %f peak_et: %f\n",iphi,ieta,caloJet.jetClusterET,caloJet.peak_total_et);
+	l1CaloJetObjs.push_back(caloJet);	
+      } 
     }
   }
 }
 
-void L1CaloJetProducer::getOverlapThirdPass(vector<Tower3x3> tower3x3s,vector< l1CaloJetObj > l1CaloJetObjs) {
+void L1CaloJetProducer::getOverlapThirdPass(map<int,Tower3x3> & tower3x3s,vector< l1CaloJetObj > & l1CaloJetObjs) {
   for (auto& caloJet : l1CaloJetObjs) {
-    
+    int ieta = caloJet.seed_iEta;
+    ieta = ieta > 0 ? 18 - ieta : ieta - 17;
+    int iphi = caloJet.seed_iPhi;
+    if (debug_3) printf("Checking Jet | iphi: %i ieta: %i et: %f\n",iphi,ieta,caloJet.jetClusterET);
     for (int deta = -1; deta <= 1; deta++) {
-      int neta = caloJet.seed_iEta + deta;
+      int neta = ieta + deta;
       if (neta <= 0 || neta > 34) continue;
       for (int dphi = -1; dphi <= 1; dphi++) {
-	int nphi = caloJet.seed_iPhi + dphi;
+	int nphi = iphi + dphi;
 	if (nphi <= 0 || nphi > 72) continue;
 	if ( deta == 0 && dphi == 0 ) continue;
-	auto& tower3x3 = tower3x3s[ getTower3x3Index(nphi,neta) ];
-	CheckOverlap( caloJet,tower3x3 );
+	auto& tower3x3 = tower3x3s[ getTowerKey(nphi,neta) ];
+	CheckOverlap( caloJet,tower3x3 );   
       }
     }
+    if (debug_3) printf("-------- Finished | iphi: %i ieta: %i et: %f\n",iphi,ieta,caloJet.jetClusterET);
   }
 }
 
@@ -819,7 +825,7 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 
 
   // Load the ECAL+HCAL tower sums coming from L1EGammaCrystalsEmulatorProducer.cc
-  std::vector< SimpleCaloHit > l1CaloTowers;
+  std::map<int,SimpleCaloHit> l1CaloTowers;
     
   iEvent.getByToken(l1TowerToken_,l1CaloTowerHandle);
   for (auto& hit : *l1CaloTowerHandle.product())
@@ -842,7 +848,7 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
       l1Hit.l1eg_standaloneSS = hit.l1eg_standaloneSS;
       l1Hit.l1eg_standaloneIso = hit.l1eg_standaloneIso;
       l1Hit.isBarrel = hit.isBarrel;
-	
+      
 
       // FIXME There is an error in the L1EGammaCrystalsEmulatorProducer.cc which is
       // returning towers with minimal ECAL energy, and no HCAL energy with these
@@ -852,8 +858,12 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 
       l1Hit.tower_eta  = hit.tower_eta;
       l1Hit.tower_phi  = hit.tower_phi;
-      l1CaloTowers.push_back( l1Hit );
-      if (debug) printf("Tower iEta %i iPhi %i eta %f phi %f ecal_et %f hcal_et %f total_et %f\n", (int)l1Hit.tower_iEta, (int)l1Hit.tower_iPhi, l1Hit.tower_eta, l1Hit.tower_phi, l1Hit.ecal_tower_et, l1Hit.hcal_tower_et, l1Hit.total_tower_et);
+
+      int ieta = l1Hit.tower_iEta;
+      ieta = ieta > 0 ? 18 - ieta : 17 - ieta;
+      int index = getTowerKey(l1Hit.tower_iPhi,ieta);
+      l1CaloTowers[index] = l1Hit;
+      // if (debug) printf("Tower iEta %i iPhi %i eta %f phi %f ecal_et %f hcal_et %f total_et %f\n", (int)l1Hit.tower_iEta, (int)l1Hit.tower_iPhi, l1Hit.tower_eta, l1Hit.tower_phi, l1Hit.ecal_tower_et, l1Hit.hcal_tower_et, l1Hit.total_tower_et);
     }
   
   /**************************************************************************
@@ -867,8 +877,8 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
   // Experimental parameters, don't want to bother with hardcoding them in data format
   std::map<std::string, float> params;
 
-  std::vector< l1CaloJetObj > l1CaloJetObjs;
-  std::vector< Tower3x3 > tower3x3s;
+  std::vector<l1CaloJetObj> l1CaloJetObjs;
+  std::map<int,Tower3x3> tower3x3s;
 
   get3x3FirstPass(l1CaloTowers,tower3x3s);
   get9x9SecondPass(tower3x3s,l1CaloJetObjs);
