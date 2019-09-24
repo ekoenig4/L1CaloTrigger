@@ -227,6 +227,8 @@ private:
       this->l1egJetCluster.SetM( mass );
     }
     inline bool equals(const l1CaloJetObj& rhs) { return this->seed_iPhi == rhs.seed_iPhi && this->seed_iEta == rhs.seed_iEta; }
+    inline int iphi() { return seed_iPhi; }
+    inline int ieta() { return seed_iEta > 0 ? 18 - seed_iEta : 17 - seed_iEta; }
   };
 
   class SimpleCaloHit
@@ -257,6 +259,10 @@ private:
     SimpleCaloHit seed;
     float peak_total_et;
     vector<l1CaloJetObj> jetlist;
+    Tower3x3() {}
+    Tower3x3( SimpleCaloHit & caloHit ) {
+      this->setSeed(caloHit);
+    }
     void setSeed( SimpleCaloHit & caloHit ) {
       tower_iEta = caloHit.tower_iEta;
       tower_iPhi = caloHit.tower_iPhi;
@@ -288,9 +294,11 @@ private:
     void addJet(l1CaloJetObj & jet) {
       jetlist.push_back(jet);
     }
+    inline int iphi() { return tower_iPhi; }
+    inline int ieta() { return tower_iEta > 0 ? 18 - tower_iEta : 17 - tower_iEta; }
   };
 
-  void get3x3FirstPass(map<int,SimpleCaloHit> l1CaloTowers,map<int,Tower3x3> & tower3x3s);
+  void get3x3FirstPass(map<int,SimpleCaloHit> & l1CaloTowers,map<int,Tower3x3> & tower3x3s);
   void get9x9SecondPass(map<int,Tower3x3> & tower3x3s,vector< l1CaloJetObj > & l1CaloJetObjs);
   void getOverlapThirdPass(map<int,Tower3x3> & tower3x3s,vector< l1CaloJetObj > & l1CaloJetObjs);
 
@@ -610,6 +618,8 @@ void L1CaloJetProducer::SetJetSeed(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3
   caloJetObj.total_3x5 += totalP4.pt();
   caloJetObj.total_7x7 += totalP4.pt();
   caloJetObj.peak_total_et = totalP4.pt();
+  
+  tower3x3.addJet(caloJetObj);
 }
 
 bool L1CaloJetProducer::AddJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3,int d_iPhi,int d_iEta) {
@@ -669,18 +679,6 @@ bool L1CaloJetProducer::AddJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & tower
   return true;
 }
 
-void L1CaloJetProducer::CheckOverlap(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3) {
-  for (l1CaloJetObj jet : tower3x3.jetlist) {
-    if ( !caloJetObj.equals(jet) ) {
-      if (caloJetObj.jetClusterET < jet.jetClusterET) {
-	if (debug_3) printf("---- Removing Tower | et: %f\n",tower3x3.total_tower_et);   
-	RemoveJetCluster(caloJetObj,tower3x3);
-	return;
-      }
-    }
-  }
-}
-
 void L1CaloJetProducer::RemoveJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3) {
   // Unused l1CaloTowers which are not the initial seed
   // Depending on seed and tower locations calculate iEta/iPhi or eta/phi comparisons.
@@ -727,13 +725,12 @@ void L1CaloJetProducer::RemoveJetCluster(l1CaloJetObj & caloJetObj,Tower3x3 & to
   caloJetObj.total_seed -= totalP4.pt();
 }
 
-void L1CaloJetProducer::get3x3FirstPass(map<int,SimpleCaloHit> l1CaloTowers,map<int,Tower3x3> & tower3x3s) {
+void L1CaloJetProducer::get3x3FirstPass(map<int,SimpleCaloHit> & l1CaloTowers,map<int,Tower3x3> & tower3x3s) {
   if (debug_1) printf("Starting 3x3 First Pass\n");
   for (int ieta = 1; ieta <= 34; ieta += 3) {
     for (int iphi = 2; iphi <= 72; iphi += 3) {
       auto& l1CaloTower = l1CaloTowers[ getTowerKey(iphi,ieta) ];
-      Tower3x3 tower3x3;
-      tower3x3.setSeed( l1CaloTower );
+      Tower3x3 tower3x3 = Tower3x3( l1CaloTower );
       if (debug_1) printf("Seeding Tower | iphi: %i ieta: %i et: %f peak_et: %f\n",iphi,ieta,tower3x3.total_tower_et,tower3x3.peak_total_et);
 
       for (int deta = -1; deta <= 1; deta++) {
@@ -758,11 +755,11 @@ void L1CaloJetProducer::get9x9SecondPass(map<int,Tower3x3> & tower3x3s,vector<l1
   if (debug_2) printf("Starting 9x9 Second Pass\n");
   for (int ieta = 1; ieta <= 34; ieta += 3) {
     for (int iphi = 2; iphi <= 72; iphi += 3) {
-      auto& tower3x3 = tower3x3s[ getTowerKey(iphi,ieta) ];
-      if (debug_2) printf("Seeding Jet | iphi: %i ieta: %i et: %f peak_et: %f\n",iphi,ieta,tower3x3.total_tower_et,tower3x3.peak_total_et);
-      if (tower3x3.peak_total_et < EtMinForSeedHit) continue;
+      auto& seed = tower3x3s[ getTowerKey(iphi,ieta) ];
+      if (debug_2) printf("Seeding Jet | iphi: %i ieta: %i et: %f peak_et: %f\n",iphi,ieta,seed.total_tower_et,seed.peak_total_et);
+      if (seed.peak_total_et < EtMinForSeedHit) continue;
       l1CaloJetObj caloJet;
-      SetJetSeed( caloJet,tower3x3 );
+      SetJetSeed( caloJet,seed );
       bool valid = true;
 
       for (int deta = -1; deta <= 1; deta++) {
@@ -772,7 +769,7 @@ void L1CaloJetProducer::get9x9SecondPass(map<int,Tower3x3> & tower3x3s,vector<l1
 	  int nphi = iphi + 3*dphi;
 	  if (nphi <= 0 || nphi > 72) continue;
 	  if ( deta == 0 && dphi == 0 ) continue;
-	  tower3x3 = tower3x3s[ getTowerKey(nphi,neta) ];
+	  auto& tower3x3 = tower3x3s[ getTowerKey(nphi,neta) ];
 	  valid = AddJetCluster( caloJet,tower3x3,dphi,deta );
 	  if (debug_2) printf("---- Add Tower | iphi: %i ieta: %i et: %f peak_et: %f valid: %i\n",nphi,neta,tower3x3.total_tower_et,tower3x3.peak_total_et,valid);
 	  if (!valid) break;
@@ -788,20 +785,33 @@ void L1CaloJetProducer::get9x9SecondPass(map<int,Tower3x3> & tower3x3s,vector<l1
   }
 }
 
+void L1CaloJetProducer::CheckOverlap(l1CaloJetObj & caloJetObj,Tower3x3 & tower3x3) {
+  for (l1CaloJetObj jet : tower3x3.jetlist) {
+    if ( !caloJetObj.equals(jet) ) {
+      if (caloJetObj.peak_total_et < jet.peak_total_et) {
+	if (debug_3) printf("---- Removing Tower | iphi: %i ieta: %i et: %f | Tower (%i,%i,%f)\n",tower3x3.iphi(),tower3x3.ieta(),tower3x3.total_tower_et,jet.iphi(),jet.ieta(),jet.peak_total_et);   
+	RemoveJetCluster(caloJetObj,tower3x3);
+	return;
+      }
+    }
+  }
+}
+
 void L1CaloJetProducer::getOverlapThirdPass(map<int,Tower3x3> & tower3x3s,vector< l1CaloJetObj > & l1CaloJetObjs) {
+  if (debug_3) printf("Starting Overlap | nTowers: %i nJets: %i\n",(int)tower3x3s.size(),(int)l1CaloJetObjs.size());
   for (auto& caloJet : l1CaloJetObjs) {
-    int ieta = caloJet.seed_iEta;
-    ieta = ieta > 0 ? 18 - ieta : ieta - 17;
-    int iphi = caloJet.seed_iPhi;
-    if (debug_3) printf("Checking Jet | iphi: %i ieta: %i et: %f\n",iphi,ieta,caloJet.jetClusterET);
+    int ieta = caloJet.ieta();
+    int iphi = caloJet.iphi();
+    if (debug_3) printf("Checking Jet | iphi: %i ieta: %i et: %f peak: %f\n",iphi,ieta,caloJet.jetClusterET,caloJet.peak_total_et);
     for (int deta = -1; deta <= 1; deta++) {
-      int neta = ieta + deta;
+      int neta = ieta + 3*deta;
       if (neta <= 0 || neta > 34) continue;
       for (int dphi = -1; dphi <= 1; dphi++) {
-	int nphi = iphi + dphi;
+	int nphi = iphi + 3*dphi;
 	if (nphi <= 0 || nphi > 72) continue;
 	if ( deta == 0 && dphi == 0 ) continue;
-	auto& tower3x3 = tower3x3s[ getTowerKey(nphi,neta) ];
+	int index = getTowerKey(nphi,neta);
+	auto& tower3x3 = tower3x3s[ index ];
 	CheckOverlap( caloJet,tower3x3 );   
       }
     }
