@@ -30,8 +30,7 @@ https://twiki.cern.ch/twiki/bin/viewauth/CMS/Phase2L1CaloJetsAndTaus#Central_Int
 ## Step-3: Phase 2 Jet Algorithm Code
 ````
 cd $CMSSW_BASE/src/L1Trigger/
-rm -rf L1CaloTrigger/
-git clone https://github.com/ekoenig4/L1CaloTrigger.git
+git clone https://github.com/ekoenig4/Phase2L1CaloTrigger.git
 cd L1CaloTrigger/
 scram b -j 8
 ````
