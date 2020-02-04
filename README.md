@@ -31,7 +31,7 @@ https://twiki.cern.ch/twiki/bin/viewauth/CMS/Phase2L1CaloJetsAndTaus#Central_Int
 ````
 cd $CMSSW_BASE/src/L1Trigger/
 git clone https://github.com/ekoenig4/Phase2L1CaloTrigger.git
-cd L1CaloTrigger/
+cd Phase2L1CaloTrigger/
 scram b -j 8
 ````
 
