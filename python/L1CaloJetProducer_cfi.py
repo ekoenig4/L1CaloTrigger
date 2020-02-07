@@ -3,7 +3,7 @@ import FWCore.ParameterSet.Config as cms
 L1CaloJetProducer = cms.EDProducer(
     "L1CaloJetProducer",
     debug = cms.bool(False),
-    debug1 = cms.bool(True),
+    debug1 = cms.bool(False),
     debug_out = cms.bool(True),
     
     HcalTpEtMin = cms.double(0.5),

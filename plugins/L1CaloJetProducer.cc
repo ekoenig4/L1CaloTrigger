@@ -283,6 +283,7 @@ private:
 };
 
 bool L1CaloJetProducer::ContainsAll(std::map<int,SimpleCaloHit> set,std::map<int,SimpleCaloHit> subset) {
+  
   for (auto subkey : subset) {
     auto subtower = subkey.second;
     bool found = false;
@@ -911,14 +912,14 @@ void L1CaloJetProducer::Debug_Output(std::vector<l1CaloJetObj>& caloJetObjs) {
     int iphi = jet.seed_iPhi;
     int ieta = jet.seed_iEta;
     ieta = ieta > 0 ? 18 - ieta : 17 - ieta;
-    printf("Writing Jet Seed iPhi: %i iEta: %i Et: %f\n",iphi,ieta,jet.jetClusterET);
+    if (debug1) printf("Writing Jet Seed iPhi: %i iEta: %i Et: %f\n",iphi,ieta,jet.jetClusterET);
     h_seed->SetBinContent(iphi,ieta,jet.jetClusterET);
     for (auto tower : jet.towers) {
       if (tower.total_tower_et == 0) continue;
       iphi = tower.tower_iPhi;
       ieta = tower.tower_iEta;
       ieta = ieta > 0 ? 18 - ieta : 17 - ieta;
-      printf("--Writing Jet Tower iPhi: %i iEta: %i Et: %f\n",iphi,ieta,tower.total_tower_et);
+      if (debug1) printf("--Writing Jet Tower iPhi: %i iEta: %i Et: %f\n",iphi,ieta,tower.total_tower_et);
       h_tower->SetBinContent(iphi,ieta,tower.total_tower_et);
     }
   }
