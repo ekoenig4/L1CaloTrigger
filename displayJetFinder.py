@@ -54,18 +54,21 @@ def plotJets(event):
     gStyle.SetOptStat(0);
     gStyle.SetLegendBorderSize(0);
     c.SetGrid()
-    event.h_tower.Draw('COLZ')
+    event.h_calo.Draw('COLZ')
+    event.h_tower.SetLineColor(kRed)
+    event.h_tower.SetLineWidth(2)
+    event.h_tower.Draw("BOX same")
     event.h_seed.SetLineColor(kRed)
     event.h_seed.SetLineWidth(2)
     event.h_seed.Draw('BOX same')
     boxlist = [ getJetBox(seed.iphi,seed.ieta) for seed in event.jetSeed ]
     for box in boxlist: box.Draw('same')
 
-    gctlist,gridlist = getGCT()
-    for gct in gctlist: gct.Draw('same')
-    for grid in gridlist:
-        for box in grid: box.Draw('same')
-    c.gct = (gctlist,gridlist)
+    # gctlist,gridlist = getGCT()
+    # for gct in gctlist: gct.Draw('same')
+    # for grid in gridlist:
+    #     for box in grid: box.Draw('same')
+    # c.gct = (gctlist,gridlist)
     c.boxlist = boxlist
     return c
 
@@ -111,6 +114,8 @@ class Test:
         self.h_norm.Divide(self.h_seed)
         self.h_tower= self.tfile.Get('tower;%i'%nevent)
         self.h_tower.SetTitle('Jet Towers %i' % nevent)
+        self.h_calo= self.tfile.Get('calo;%i'%nevent)
+        self.h_calo.SetTitle('Calo Towers %i'%nevent)
         def getSeeds(seeds):
             seedlist = []
             for iphi in range(1,seeds.GetNbinsX()+1):
@@ -127,7 +132,7 @@ tests = [ Test(fname) for fname in argv[1:] ]
 nevents = min( test.nevents for test in tests )
 c=TCanvas()
 c.Print('test_display.pdf(')
-for i in [2]:
+for i in range(nevents):
     for test in tests:
         test.getEvent(i+1)
         plotJets(test).Print('test_display.pdf')
@@ -135,8 +140,8 @@ for i in [2]:
     
     if len(tests) > 1:
         ratio,diff = compareFiles(tests[0],tests[1])
-        ratio.Print('test_display.pdf')
-        diff.Print('test_display.pdf')
+        # ratio.Print('test_display.pdf')
+        # diff.Print('test_display.pdf')
 c.Print('test_display.pdf)')
 
 from os import system
