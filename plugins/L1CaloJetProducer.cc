@@ -152,6 +152,8 @@ private:
     int l1eg_standaloneSS = 0;
     int l1eg_standaloneIso = 0;
 
+    inline int iphi() { return tower_iPhi; }
+    inline int ieta() { return tower_iEta > 0 ? 18 - tower_iEta : 17 - tower_iEta; }
     inline bool equals(const SimpleCaloHit& rhs) {
       return tower_iEta == rhs.tower_iEta && tower_iPhi == rhs.tower_iPhi && total_tower_et == rhs.total_tower_et;
     }
@@ -275,7 +277,7 @@ private:
   void ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
   std::map<int,SimpleCaloHit> getGCTTowers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
   void ClusterCalorimeter(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  void Debug_Output(std::vector<l1CaloJetObj>& caloJetObjs);
+  void Debug_Output(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
 
   inline int getTowerKey(int iphi,int ieta) { return 100*iphi + ieta; }
   inline std::pair<int,int> getTowerIPhiIEta(int tower_key) { return std::make_pair((int)tower_key/100,(int)tower_key%100); }
@@ -857,7 +859,8 @@ void L1CaloJetProducer::ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::m
   // 9 Eta Slices Cells4x4
   for (int ieta = 2; ieta <= 34; ieta += 4) {
     // 6 Phi Slices Cells4x4
-    for (int iphi = 2; iphi <= 24; iphi += 4) {
+    // Ignore 2 4Phi slides on each side of GCT region
+    for (int iphi = 4; iphi <= 28; iphi += 4) {
       int center_key = getTowerKey(iphi,ieta);
       l1CaloJetObj jet;
       if (debug1) printf("--Clustering 25x25 Jet %i\n",center_key);
@@ -871,13 +874,14 @@ void L1CaloJetProducer::ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::m
 
 std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::getGCTTowers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
   // center_key is the coordinates of the bottom left tower
-  // map center_key -> (1,1)
+  // map center_key -> (5,1) *ignoring the left overlapping 4 phi regions
+  // gct has two overlaping rct regions on each side that isn't checked for seeds but is used for clustering
   auto ipair = getTowerIPhiIEta(center_key);
   int center_iphi = ipair.first; int center_ieta = ipair.second;
   std::map<int,SimpleCaloHit> towersGCT;
-  for (int iphi = 1; iphi <= 24; iphi++) {
+  for (int iphi = 1; iphi <= 32; iphi++) {
     for (int ieta = 1; ieta <= 34; ieta++) {
-      const int real_index = getTowerKey(iphi - 1 + center_iphi,ieta - 1 + center_ieta);
+      const int real_index = getTowerKey(iphi - 4 + center_iphi,ieta - 1 + center_ieta);
       const int new_index = getTowerKey(iphi,ieta);
       if ( l1CaloTowers.find(real_index) == l1CaloTowers.end() ) continue;
       auto& tower = l1CaloTowers[real_index];
@@ -897,34 +901,36 @@ void L1CaloJetProducer::ClusterCalorimeter(std::vector<l1CaloJetObj>& caloJetObj
   }
 }
 
-void L1CaloJetProducer::Debug_Output(std::vector<l1CaloJetObj>& caloJetObjs) {
+void L1CaloJetProducer::Debug_Output(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& caloTowers) {
   TH2F* h_seed = new TH2F("seed","Clustered Jets;iPhi;iEta",72,0,72,34,0,34);
   TH2F* h_tower = new TH2F("tower","Jet Towers;iPhi;iEta",72,0,72,34,0,34);
+  TH2F* h_calo = new TH2F("calo","Calo Towers;iPhi;iEta",72,0,72,34,0,34);
   for (int iphi = 1; iphi <= 72; iphi++) {
     h_seed->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
     h_tower->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
+    h_calo->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
   }
   for (int ieta = 1; ieta <= 34; ieta++) {
     h_seed->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
     h_tower->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
+    h_calo->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
   }
   for (auto jet : caloJetObjs) {
-    int iphi = jet.seed_iPhi;
-    int ieta = jet.seed_iEta;
-    ieta = ieta > 0 ? 18 - ieta : 17 - ieta;
-    if (debug1) printf("Writing Jet Seed iPhi: %i iEta: %i Et: %f\n",iphi,ieta,jet.jetClusterET);
-    h_seed->SetBinContent(iphi,ieta,jet.jetClusterET);
+    if (debug1) printf("Writing Jet Seed iPhi: %i iEta: %i Et: %f\n",jet.iphi(),jet.ieta(),jet.jetClusterET);
+    h_seed->SetBinContent(jet.iphi(),jet.ieta(),jet.jetClusterET);
     for (auto tower : jet.towers) {
       if (tower.total_tower_et == 0) continue;
-      iphi = tower.tower_iPhi;
-      ieta = tower.tower_iEta;
-      ieta = ieta > 0 ? 18 - ieta : 17 - ieta;
-      if (debug1) printf("--Writing Jet Tower iPhi: %i iEta: %i Et: %f\n",iphi,ieta,tower.total_tower_et);
-      h_tower->SetBinContent(iphi,ieta,tower.total_tower_et);
+      if (debug1) printf("--Writing Jet Tower iPhi: %i iEta: %i Et: %f\n",tower.iphi(),tower.ieta(),tower.total_tower_et);
+      h_tower->SetBinContent(tower.iphi(),tower.ieta(),tower.total_tower_et);
     }
+  }
+  for (auto key : caloTowers) {
+    auto tower = key.second;
+    h_calo->SetBinContent(tower.iphi(),tower.ieta(),tower.total_tower_et);
   }
   h_seed->Write();
   h_tower->Write();
+  h_calo->Write();
 }
 
 void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup)
@@ -1005,7 +1011,7 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
   std::sort(begin(l1CaloJetObjs), end(l1CaloJetObjs), [](const l1CaloJetObj& a,
 							 const l1CaloJetObj& b){return a.jetClusterET > b.jetClusterET;});
 
-  if (debug_out) Debug_Output(l1CaloJetObjs);
+  if (debug_out) Debug_Output(l1CaloJetObjs,l1CaloTowers);
   return;
   /**************************************************************************
    * Progress to adding L1EGs built from ECAL TPs  9x9 grid.
