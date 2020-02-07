@@ -843,8 +843,8 @@ std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::get25x25Towers
   auto ipair = getTowerIPhiIEta(center_key);
   int center_iphi = ipair.first; int center_ieta = ipair.second;
   std::map<int,SimpleCaloHit> towers25x25;
-  for (int iphi = 1; iphi <= 27; iphi++) {
-    for (int ieta = 1; ieta <= 27; ieta++) {
+  for (int iphi = 1; iphi <= 25; iphi++) {
+    for (int ieta = 1; ieta <= 25; ieta++) {
       const int real_index = getTowerKey(iphi - 13 + center_iphi,ieta - 13 + center_ieta);
       const int new_index = getTowerKey(iphi,ieta);
       if ( l1CaloTowers.find(real_index) == l1CaloTowers.end() ) continue;
@@ -860,7 +860,7 @@ void L1CaloJetProducer::ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::m
   for (int ieta = 2; ieta <= 34; ieta += 4) {
     // 6 Phi Slices Cells4x4
     // Ignore 2 4Phi slides on each side of GCT region
-    for (int iphi = 4; iphi <= 28; iphi += 4) {
+    for (int iphi = 6; iphi <= 26; iphi += 4) {
       int center_key = getTowerKey(iphi,ieta);
       l1CaloJetObj jet;
       if (debug1) printf("--Clustering 25x25 Jet %i\n",center_key);
@@ -874,14 +874,16 @@ void L1CaloJetProducer::ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::m
 
 std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::getGCTTowers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
   // center_key is the coordinates of the bottom left tower
-  // map center_key -> (5,1) *ignoring the left overlapping 4 phi regions
+  // map center_key -> (6,1) *ignoring the left overlapping 4 phi regions
   // gct has two overlaping rct regions on each side that isn't checked for seeds but is used for clustering
   auto ipair = getTowerIPhiIEta(center_key);
   int center_iphi = ipair.first; int center_ieta = ipair.second;
   std::map<int,SimpleCaloHit> towersGCT;
   for (int iphi = 1; iphi <= 32; iphi++) {
     for (int ieta = 1; ieta <= 34; ieta++) {
-      const int real_index = getTowerKey(iphi - 4 + center_iphi,ieta - 1 + center_ieta);
+      int rphi = (iphi - 6 + center_iphi)%72 + 1;
+      int reta = (ieta - 1 + center_ieta)%34;
+      const int real_index = getTowerKey(rphi,reta);
       const int new_index = getTowerKey(iphi,ieta);
       if ( l1CaloTowers.find(real_index) == l1CaloTowers.end() ) continue;
       auto& tower = l1CaloTowers[real_index];

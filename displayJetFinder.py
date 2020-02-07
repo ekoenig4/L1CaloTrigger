@@ -49,7 +49,7 @@ def getGCT(ngct=0,grid=True):
             gridlist = [ GCTGrid( gctmap[str(ngct)] ) ]
     return gctlist,gridlist
 
-def plotJets(event):
+def plotJets(event,grid=False):
     c=TCanvas('%s_%i' % (event.fname,event.nevent),'%s_%i' % (event.fname,event.nevent),1200,800)
     gStyle.SetOptStat(0);
     gStyle.SetLegendBorderSize(0);
@@ -64,19 +64,21 @@ def plotJets(event):
     boxlist = [ getJetBox(seed.iphi,seed.ieta) for seed in event.jetSeed ]
     for box in boxlist: box.Draw('same')
 
-    # gctlist,gridlist = getGCT()
-    # for gct in gctlist: gct.Draw('same')
-    # for grid in gridlist:
-    #     for box in grid: box.Draw('same')
-    # c.gct = (gctlist,gridlist)
+    if grid:
+        gctlist,gridlist = getGCT()
+        for gct in gctlist: gct.Draw('same')
+        for grid in gridlist:
+            for box in grid: box.Draw('same')
+        c.gct = (gctlist,gridlist)
     c.boxlist = boxlist
     return c
 
 def compareFiles(e1,e2):
     nj1,nj2 = e1.nJet,e2.nJet
-    print 'nj1: %i nj2: %i ratio: %f' % (nj1,nj2,float(nj1)/nj2)
-    print 'set1: %f set2: %f ratio: %f' % (e1.h_seed.Integral(),e2.h_seed.Integral(),e1.h_seed.Integral()/e2.h_seed.Integral())
-    print 'tet1: %f tet2: %f ratio: %f' % (e1.h_tower.Integral(),e2.h_tower.Integral(),e1.h_tower.Integral()/e2.h_tower.Integral())
+    print '            nj1: %.3f nj2: %.3f ratio: %.3f' % (nj1,nj2,float(nj1)/nj2)
+    print 'total jet   et1: %.3f et2: %.3f ratio: %.3f' % (e1.h_seed.Integral(),e2.h_seed.Integral(),e1.h_seed.Integral()/e2.h_seed.Integral())
+    print 'total tower et1: %.3f et2: %.3f ratio: %.3f' % (e1.h_tower.Integral(),e2.h_tower.Integral(),e1.h_tower.Integral()/e2.h_tower.Integral())
+    print 'total calo  et1: %.3f et2: %.3f ratio: %.3f' % (e1.h_calo.Integral(),e2.h_calo.Integral(),e1.h_calo.Integral()/e2.h_calo.Integral())
     def compare(h1,h2,name):
         ratio=h1.Clone()
         ratio.Divide(h2)
@@ -132,10 +134,11 @@ tests = [ Test(fname) for fname in argv[1:] ]
 nevents = min( test.nevents for test in tests )
 c=TCanvas()
 c.Print('test_display.pdf(')
-for i in range(nevents):
+for i in [8]:
+    print 'Analyzing Event %i' % (i+1)
     for test in tests:
         test.getEvent(i+1)
-        plotJets(test).Print('test_display.pdf')
+        plotJets(test,grid=True).Print('test_display.pdf')
 
     
     if len(tests) > 1:
