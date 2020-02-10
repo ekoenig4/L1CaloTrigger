@@ -48,6 +48,8 @@
 // For pT calibrations
 #include "TF1.h"
 #include "TH2.h"
+#include "TFile.h"
+#include "TDirectory.h"
 
 // Run2/PhaseI output formats
 #include "DataFormats/L1Trigger/interface/Tau.h"
@@ -277,8 +279,52 @@ private:
   void ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
   std::map<int,SimpleCaloHit> getGCTTowers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
   void ClusterCalorimeter(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  void Debug_Output(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
-
+  
+  struct DebugInfo {
+    TFile* output;
+    TH2F *h_calo,*h_seed,*h_tower;
+    DebugInfo() {
+      output = new TFile("test_output.root","recreate");
+      h_seed = new TH2F("seed","Clustered Jets;iPhi;iEta",72,0,72,34,0,34);
+      h_tower = new TH2F("tower","Jet Towers;iPhi;iEta",72,0,72,34,0,34);
+      h_calo = new TH2F("calo","Calo Towers;iPhi;iEta",72,0,72,34,0,34);
+      for (int iphi = 1; iphi <= 72; iphi++) {
+	h_seed->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
+	h_tower->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
+	h_calo->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
+      }
+      for (int ieta = 1; ieta <= 34; ieta++) {
+	h_seed->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
+	h_tower->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
+	h_calo->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
+      }
+    }
+    void save(vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+      TH2F* h_seed = (TH2F*)this->h_seed->Clone();
+      TH2F* h_tower = (TH2F*)this->h_tower->Clone();
+      TH2F* h_calo = (TH2F*)this->h_calo->Clone();
+      for (auto jet : caloJetObjs) {
+	// if (debug1) printf("Writing Jet Seed iPhi: %i iEta: %i Et: %f\n",jet.iphi(),jet.ieta(),jet.jetClusterET);
+	h_seed->SetBinContent(jet.iphi(),jet.ieta(),jet.jetClusterET);
+	for (auto tower : jet.towers) {
+	  if (tower.total_tower_et == 0) continue;
+	  // if (debug1) printf("--Writing Jet Tower iPhi: %i iEta: %i Et: %f\n",tower.iphi(),tower.ieta(),tower.total_tower_et);
+	  h_tower->SetBinContent(tower.iphi(),tower.ieta(),tower.total_tower_et);
+	}
+      }
+      for (auto key : l1CaloTowers) {
+	auto tower = key.second;
+	h_calo->SetBinContent(tower.iphi(),tower.ieta(),tower.total_tower_et);
+      }
+      auto& cwd = gDirectory;
+      output->cd();
+      h_seed->Write();
+      h_tower->Write();
+      h_calo->Write();
+      cwd->cd();
+    }
+  } debuginfo;
+  
   inline int getTowerKey(int iphi,int ieta) { return 100*iphi + ieta; }
   inline std::pair<int,int> getTowerIPhiIEta(int tower_key) { return std::make_pair((int)tower_key/100,(int)tower_key%100); }
   bool ContainsAll(std::map<int,SimpleCaloHit> set,std::map<int,SimpleCaloHit> subset);
@@ -903,38 +949,6 @@ void L1CaloJetProducer::ClusterCalorimeter(std::vector<l1CaloJetObj>& caloJetObj
   }
 }
 
-void L1CaloJetProducer::Debug_Output(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& caloTowers) {
-  TH2F* h_seed = new TH2F("seed","Clustered Jets;iPhi;iEta",72,0,72,34,0,34);
-  TH2F* h_tower = new TH2F("tower","Jet Towers;iPhi;iEta",72,0,72,34,0,34);
-  TH2F* h_calo = new TH2F("calo","Calo Towers;iPhi;iEta",72,0,72,34,0,34);
-  for (int iphi = 1; iphi <= 72; iphi++) {
-    h_seed->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
-    h_tower->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
-    h_calo->GetXaxis()->SetBinLabel(iphi,std::to_string(iphi).c_str());
-  }
-  for (int ieta = 1; ieta <= 34; ieta++) {
-    h_seed->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
-    h_tower->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
-    h_calo->GetYaxis()->SetBinLabel(ieta,std::to_string(ieta).c_str());
-  }
-  for (auto jet : caloJetObjs) {
-    if (debug1) printf("Writing Jet Seed iPhi: %i iEta: %i Et: %f\n",jet.iphi(),jet.ieta(),jet.jetClusterET);
-    h_seed->SetBinContent(jet.iphi(),jet.ieta(),jet.jetClusterET);
-    for (auto tower : jet.towers) {
-      if (tower.total_tower_et == 0) continue;
-      if (debug1) printf("--Writing Jet Tower iPhi: %i iEta: %i Et: %f\n",tower.iphi(),tower.ieta(),tower.total_tower_et);
-      h_tower->SetBinContent(tower.iphi(),tower.ieta(),tower.total_tower_et);
-    }
-  }
-  for (auto key : caloTowers) {
-    auto tower = key.second;
-    h_calo->SetBinContent(tower.iphi(),tower.ieta(),tower.total_tower_et);
-  }
-  h_seed->Write();
-  h_tower->Write();
-  h_calo->Write();
-}
-
 void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
 
@@ -1013,7 +1027,7 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
   std::sort(begin(l1CaloJetObjs), end(l1CaloJetObjs), [](const l1CaloJetObj& a,
 							 const l1CaloJetObj& b){return a.jetClusterET > b.jetClusterET;});
 
-  if (debug_out) Debug_Output(l1CaloJetObjs,l1CaloTowers);
+  if (debug_out) debuginfo.save(l1CaloJetObjs,l1CaloTowers);
   return;
   /**************************************************************************
    * Progress to adding L1EGs built from ECAL TPs  9x9 grid.
