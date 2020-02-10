@@ -3,14 +3,64 @@ from config import config
 
 def getKey(phi,eta): return str( 100*phi + eta )
 def getPhiEta(key): return int(key)/100,int(key)%100
-def irange(lo,hi,step=1): return range(lo,hi,step)
+def irange(lo,hi,step=1): return range(lo,hi+1,step)
 def BuildCalo(calo):
     calomap = {}
-    for iphi in irange(1,calo.GetNbinsX()+1):
-        for ieta in irange(1,calo.GetNbinsY()+1):
-            calomap[getKey(iphi,ieta)] = Tower(iphi,ieta,calo.GetBinContent(iphi,ieta))
+    for ieta in irange(1,calo.GetNbinsY()):
+        for iphi in irange(1,calo.GetNbinsX()):
+            key = getKey(iphi,ieta)
+            calomap[key] = Tower(iphi,ieta,calo.GetBinContent(iphi,ieta))
     return calomap
+def keyiter(keylist):
+    for key in keylist: yield getPhiEta(key)
+    
+def getBox(iphi,ieta,geometry=(7,7),color=kBlack):
+    dphi,deta=[d/2 for d in geometry]
+    box = TBox(iphi-dphi-1,ieta-deta-1,iphi+dphi,ieta+deta)
+    box.SetFillStyle(0)
+    box.SetLineColor(color)
+    box.SetLineWidth(2)
+    return box
+    
+storemap={}
+def DrawGrid(gridmap,name=None,pause=False,box=None):
+    if not config.debug: return
+    if name == None: name = str(len(debug_store))
+    if name=='t25':xmax,ymax=25,25
+    elif name=='t21':xmax,ymax=21,21
+    else:
+        xmax = max( iphi for iphi,ieta in keyiter(gridmap) )
+        ymax = max( ieta for iphi,ieta in keyiter(gridmap) )
 
+    if name in storemap: del storemap[name]
+    grid = TH2F("grid_%s"%name,";iPhi;iEta",xmax,0,xmax,ymax,0,ymax)
+    for i in irange(1,xmax): grid.GetXaxis().SetBinLabel(i,str(i))
+    for i in irange(1,ymax): grid.GetYaxis().SetBinLabel(i,str(i))
+
+    for y in irange(1,ymax):
+        for x in irange(1,xmax):
+            if getKey(x,y) in gridmap:
+                grid.SetBinContent(x,y,gridmap[getKey(x,y)].et)
+    c = TCanvas("canvas_%s"%name,"")
+    c.SetGrid()
+    gStyle.SetOptStat(0)
+    grid.Draw("COLZ")
+    c.grid=grid
+    if type(box) is tuple:
+        (cx,cy,wx,wy) = box
+        center=getBox(cx,cy,geometry=(wx,wy))
+        center.Draw('same')
+        c.center=center
+    elif xmax == 25 and ymax == 25:
+        center=getBox(13.5,12.5,geometry=(3.0,3.0))
+        center.Draw('same')
+        c.center=center
+    elif xmax == 21 and ymax == 21:
+        center=getBox(11,11)
+        center.Draw('same')
+        c.center=center
+    storemap[getKey(xmax,ymax)]=c
+    if pause: raw_input("%s Paused."%name)
 class Tower:
     def __init__(self,iphi,ieta,et):
         self.iphi = iphi
@@ -26,14 +76,14 @@ class Jet:
         self.et = -1
         self.towers = []
     def seed(self,seed):
-        if config.debug: print '--Seeding Jet %s' % str(seed)
+        if config.debug: print '---Seeding Jet %s' % str(seed)
         self.iphi = seed.iphi
         self.ieta = seed.ieta
         self.seed_et = seed.et
         self.et = seed.et
         self.towers.append(seed)
     def add(self,tower):
-        if config.debug and tower.et > 0: print '---Adding Tower %s' % str(tower)
+        if config.debug and tower.et > 0: print '----Adding Tower %s' % str(tower)
         self.et += tower.et
         self.towers.append(tower)
     def __str__(self):

@@ -1,7 +1,14 @@
 from ROOT import *
 from sys import argv
+from argparse import ArgumentParser
 
 gROOT.SetBatch(1)
+
+parser = ArgumentParser()
+parser.add_argument("argv",nargs="+")
+parser.add_argument("-grid",action="store_true",default=False)
+
+config = parser.parse_args()
 
 class Jet:
     def __init__(self,iphi,ieta,et):
@@ -130,7 +137,7 @@ class Test:
         self.store.append( (self.h_seed,self.h_norm,self.h_tower) )
 
 ####################
-tests = [ Test(fname) for fname in argv[1:] ]
+tests = [ Test(fname) for fname in config.argv ]
 nevents = min( test.nevents for test in tests )
 c=TCanvas()
 c.Print('test_display.pdf(')
@@ -138,14 +145,14 @@ for i in range(nevents):
     print 'Analyzing Event %i' % (i+1)
     for test in tests:
         test.getEvent(i+1)
-        plotJets(test).Print('test_display.pdf')
+        plotJets(test,grid=config.grid).Print('test_display.pdf')
 
     
     if len(tests) > 1:
         ratio,diff = compareFiles(tests[0],tests[1])
-        # ratio.Print('test_display.pdf')
-        # diff.Print('test_display.pdf')
+        ratio.Print('test_display.pdf')
+        diff.Print('test_display.pdf')
 c.Print('test_display.pdf)')
 
 from os import system
-system('mv test_display.pdf ~/public_html/Trigger/JetAlgo/CMSSW_Plots/')
+# system('mv test_display.pdf ~/public_html/Trigger/JetAlgo/CMSSW_Plots/')
