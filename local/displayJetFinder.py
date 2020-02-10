@@ -134,11 +134,11 @@ tests = [ Test(fname) for fname in argv[1:] ]
 nevents = min( test.nevents for test in tests )
 c=TCanvas()
 c.Print('test_display.pdf(')
-for i in [8]:
+for i in range(nevents):
     print 'Analyzing Event %i' % (i+1)
     for test in tests:
         test.getEvent(i+1)
-        plotJets(test,grid=True).Print('test_display.pdf')
+        plotJets(test).Print('test_display.pdf')
 
     
     if len(tests) > 1:
