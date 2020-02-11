@@ -1,5 +1,6 @@
 from ROOT import *
 from config import config
+import time
 
 def getKey(phi,eta): return str( 100*phi + eta )
 def getPhiEta(key): return int(key)/100,int(key)%100
@@ -26,13 +27,17 @@ storemap={}
 def DrawGrid(gridmap,name=None,pause=False,box=None):
     if not config.debug: return
     if name == None: name = str(len(debug_store))
-    if name=='t25':xmax,ymax=25,25
-    elif name=='t21':xmax,ymax=21,21
+    if name=='t22':xmax,ymax=22,22
+    elif name=='t19':xmax,ymax=19,19
     else:
         xmax = max( iphi for iphi,ieta in keyiter(gridmap) )
         ymax = max( ieta for iphi,ieta in keyiter(gridmap) )
 
-    if name in storemap: del storemap[name]
+    if name in storemap:
+        storemap[name].grid.Delete()
+        if hasattr(storemap[name],'center'):
+            storemap[name].center.Delete()
+        storemap[name].Delete()
     grid = TH2F("grid_%s"%name,";iPhi;iEta",xmax,0,xmax,ymax,0,ymax)
     for i in irange(1,xmax): grid.GetXaxis().SetBinLabel(i,str(i))
     for i in irange(1,ymax): grid.GetYaxis().SetBinLabel(i,str(i))
@@ -51,16 +56,18 @@ def DrawGrid(gridmap,name=None,pause=False,box=None):
         center=getBox(cx,cy,geometry=(wx,wy))
         center.Draw('same')
         c.center=center
-    elif xmax == 25 and ymax == 25:
-        center=getBox(13.5,12.5,geometry=(3.0,3.0))
+    elif xmax == 22 and ymax == 22:
+        center=getBox(11.5,11.5,geometry=(3.0,3.0))
         center.Draw('same')
         c.center=center
-    elif xmax == 21 and ymax == 21:
-        center=getBox(11,11)
+    elif xmax == 19 and ymax == 19:
+        center=getBox(10,10)
         center.Draw('same')
         c.center=center
     storemap[getKey(xmax,ymax)]=c
-    if pause: raw_input("%s Paused."%name)
+    if pause:
+        if config.play: time.sleep(1)
+        else: raw_input("%s Paused."%name)
 class Tower:
     def __init__(self,iphi,ieta,et):
         self.iphi = iphi
