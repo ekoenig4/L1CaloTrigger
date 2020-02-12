@@ -85,6 +85,7 @@ def compareFiles(e1,e2):
     print '            nj1: %.3f nj2: %.3f ratio: %.3f' % (nj1,nj2,float(nj1)/nj2)
     print 'total jet   et1: %.3f et2: %.3f ratio: %.3f' % (e1.h_seed.Integral(),e2.h_seed.Integral(),e1.h_seed.Integral()/e2.h_seed.Integral())
     print 'total tower et1: %.3f et2: %.3f ratio: %.3f' % (e1.h_tower.Integral(),e2.h_tower.Integral(),e1.h_tower.Integral()/e2.h_tower.Integral())
+    print 'jet/tower   ra1: %.3f ra2: %.3f'             % (e1.h_seed.Integral()/e1.h_tower.Integral(),e2.h_seed.Integral()/e2.h_tower.Integral())
     print 'total calo  et1: %.3f et2: %.3f ratio: %.3f' % (e1.h_calo.Integral(),e2.h_calo.Integral(),e1.h_calo.Integral()/e2.h_calo.Integral())
     def compare(h1,h2,name):
         ratio=h1.Clone()

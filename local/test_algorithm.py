@@ -28,6 +28,7 @@ def produce(calo):
         for tower in jet.towers:
             if (tower.et == 0): continue
             if (config.debug): print "--Writing Jet Tower iPhi: %i iEta: %i Et: %f" % (tower.iphi,tower.ieta,tower.et);
+            if h_tower.GetBinContent(tower.iphi,tower.ieta) > 0: print 'WARNING. Overlapped Tower %s'%tower
             h_tower.SetBinContent(tower.iphi,tower.ieta,tower.et);
     for key,tower in calo.iteritems():
         h_calo.SetBinContent(tower.iphi,tower.ieta,tower.et);
