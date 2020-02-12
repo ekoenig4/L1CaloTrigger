@@ -37,7 +37,7 @@ def produce(calo):
     h_calo.Write();
     return
 
-events = Info('data/test_output.root')
+events = Info('data/tyler_output.root')
 for ievent in range(events.nevents):
     calo = events.getCalo(ievent)
     print 'Analyzing Event: %i' % ievent
