@@ -5,6 +5,8 @@ L1CaloJetProducer = cms.EDProducer(
     debug = cms.bool(False),
     debug1 = cms.bool(False),
     debug_out = cms.bool(True),
+    useLargerGCT = cms.bool(True),
+    doOverlap = cms.bool(True),
     
     HcalTpEtMin = cms.double(0.5),
     EcalTpEtMin = cms.double(0.5),

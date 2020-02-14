@@ -56,6 +56,24 @@
 #include "DataFormats/L1Trigger/interface/Jet.h"
 
 
+
+int tower_diPhi( int iPhi_1, int iPhi_2 ) {
+  // 360 Crystals in full, 72 towers, half way is 36
+  int PI = 36;
+  int result = iPhi_1 - iPhi_2;
+  while (result > PI) result -= 2*PI;
+  while (result <= -PI) result += 2*PI;
+  return result;
+}
+
+
+// Added b/c of the iEta jump from +1 to -1 across the barrel mid point
+int tower_diEta( int iEta_1, int iEta_2 ) {
+  // On same side of barrel
+  if (iEta_1 * iEta_2 > 0) return iEta_1 - iEta_2;
+  else return iEta_1 - iEta_2 - 1;
+}
+
 class L1CaloJetProducer : public edm::EDProducer {
 public:
   explicit L1CaloJetProducer(const edm::ParameterSet&);
@@ -64,8 +82,6 @@ private:
   virtual void produce(edm::Event&, const edm::EventSetup&);
   //bool cluster_passes_base_cuts(float &cluster_pt, float &cluster_eta, float &iso, float &e2x5, float &e5x5) const;
   int ecalXtal_diPhi( int &iPhi_1, int &iPhi_2 ) const;
-  int tower_diPhi( int &iPhi_1, int &iPhi_2 ) const;
-  int tower_diEta( int &iEta_1, int &iEta_2 ) const;
   float get_deltaR( reco::Candidate::PolarLorentzVector &p4_1,
 		    reco::Candidate::PolarLorentzVector &p4_2) const;
   float get_hcal_calibration( float &jet_pt, float &ecal_pt,
@@ -120,6 +136,8 @@ private:
   bool debug;
   bool debug1;
   bool debug_out;
+  bool useLargerGCT;
+  bool doOverlap;
   
   edm::EDGetTokenT< L1CaloTowerCollection > l1TowerToken_;
   edm::Handle< L1CaloTowerCollection > l1CaloTowerHandle;
@@ -156,8 +174,23 @@ private:
 
     inline int iphi() { return tower_iPhi; }
     inline int ieta() { return tower_iEta > 0 ? 18 - tower_iEta : 17 - tower_iEta; }
-    inline bool equals(const SimpleCaloHit& rhs) {
+    inline bool operator ==(const SimpleCaloHit& rhs) {
       return tower_iEta == rhs.tower_iEta && tower_iPhi == rhs.tower_iPhi && total_tower_et == rhs.total_tower_et;
+    }
+    inline bool operator !=(const SimpleCaloHit& rhs) {
+      return !(*this == rhs);
+    }
+    inline bool operator <(const SimpleCaloHit& rhs) {
+      if ( total_tower_et == rhs.total_tower_et ) {
+	int dphi = tower_diPhi(rhs.tower_iPhi,tower_iPhi);
+	int deta = tower_diEta(rhs.tower_iEta,tower_iEta);
+	if (deta == 0 && dphi == 0) return false;
+	if (deta <= 0 && dphi <= 0) return false;
+	if (deta >= 0 && dphi >= 0) return true;
+	if (deta >  0 && dphi <  0) return abs(deta) <= abs(dphi);
+	if (deta <  0 && dphi >  0) return abs(deta) >= abs(dphi); 
+      }
+      return total_tower_et < rhs.total_tower_et;
     }
   };
 
@@ -268,17 +301,19 @@ private:
   
   void SetJetSeed(l1CaloJetObj& caloJetObj,SimpleCaloHit& l1CaloTower);
   void AddTower(l1CaloJetObj& caloJetObj,SimpleCaloHit& l1CaloTower);
-  void Cluster7x7(l1CaloJetObj& jet,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  std::map<int,SimpleCaloHit> get7x7Towers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  void Cluster21x21(l1CaloJetObj& jet,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  std::map<int,SimpleCaloHit> get21x21Towers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  std::pair<int,float> getMaxTowerIn7x7(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  std::pair<int,float> getMaxTowerIn4x4(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  void Cluster25x25(l1CaloJetObj& jet,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  std::map<int,SimpleCaloHit> get25x25Towers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  void ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
-  std::map<int,SimpleCaloHit> getGCTTowers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers);
   void ClusterCalorimeter(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  void ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  void Cluster22x22(l1CaloJetObj& caloJetObj,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  void Cluster19x19(l1CaloJetObj& caloJetObj,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  void Cluster7x7(l1CaloJetObj& caloJetObj,std::map<int,SimpleCaloHit>& l1CaloTowers,std::set<int> overlaps=std::set<int>());
+
+  std::map<int,SimpleCaloHit> getGCTTowers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  std::map<int,SimpleCaloHit> get22x22Towers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  std::map<int,SimpleCaloHit> get19x19Towers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  std::map<int,SimpleCaloHit> get7x7Towers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  std::set<int> getOverlapTowers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  int getMaxTowerIn4x4(int center,std::map<int,SimpleCaloHit>& l1CaloTowers);
+  int getMaxTowerIn7x7(int center,std::map<int,SimpleCaloHit>& l1CaloTowers);
   
   struct DebugInfo {
     TFile* output;
@@ -325,8 +360,8 @@ private:
     }
   } debuginfo;
   
-  inline int getTowerKey(int iphi,int ieta) { return 100*iphi + ieta; }
-  inline std::pair<int,int> getTowerIPhiIEta(int tower_key) { return std::make_pair((int)tower_key/100,(int)tower_key%100); }
+  inline int getKey(int iphi,int ieta) { return 100*iphi + ieta; }
+  inline std::pair<int,int> getPhiEta(int tower_key) { return std::make_pair((int)tower_key/100,(int)tower_key%100); }
   bool ContainsAll(std::map<int,SimpleCaloHit> set,std::map<int,SimpleCaloHit> subset);
 };
 
@@ -337,7 +372,7 @@ bool L1CaloJetProducer::ContainsAll(std::map<int,SimpleCaloHit> set,std::map<int
     bool found = false;
     for (auto key : set) {
       auto tower = key.second;
-      if (tower.equals(subtower)) {
+      if (tower == subtower) {
 	found = true;
 	break;
       }
@@ -376,8 +411,9 @@ L1CaloJetProducer::L1CaloJetProducer(const edm::ParameterSet& iConfig) :
   debug(iConfig.getParameter<bool>("debug")),
   debug1(iConfig.getParameter<bool>("debug1")),
   debug_out(iConfig.getParameter<bool>("debug_out")),
+  useLargerGCT(iConfig.getParameter<bool>("useLargerGCT")),
+  doOverlap(iConfig.getParameter<bool>("doOverlap")),
   l1TowerToken_(consumes< L1CaloTowerCollection >(iConfig.getParameter<edm::InputTag>("l1CaloTowers")))
-
 {
   if (debug) printf("L1CaloJetProducer setup\n");
   produces<l1slhc::L1CaloJetsCollection>("L1CaloJetsNoCuts");
@@ -767,185 +803,66 @@ void L1CaloJetProducer::AddTower(l1CaloJetObj& caloJetObj,SimpleCaloHit& l1CaloT
   if (l1CaloTower.total_tower_et > 0 && debug1) printf("----Adding Tower %f to Jet -> %f\n",l1CaloTower.total_tower_et,caloJetObj.jetClusterET);
 }
 
-void L1CaloJetProducer::Cluster7x7(l1CaloJetObj& jet,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // map has 7x7 towers needed to cluster jet
-  // Find max tower is set as the center tower (4,4)
-  const int seed_index = getTowerKey(4,4);
-  auto seed = l1CaloTowers[seed_index];
-  SetJetSeed(jet,seed);
-  for(auto key : l1CaloTowers){
-    auto index = key.first; auto tower = key.second;
-    if (index == seed_index) continue;
-    AddTower(jet,tower);
+void L1CaloJetProducer::ClusterCalorimeter(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  for (int iphi = 1; iphi <= 72; iphi += 24) {
+    int center = getKey(iphi,1);
+    auto gct = getGCTTowers(center,l1CaloTowers);
+    ClusterGCT(caloJetObjs,gct);
   }
-  if (debug1) printf("---Clustered Jet: Et: %f Seed: %f\n",jet.jetClusterET,jet.total_seed);
 }
-
-std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::get7x7Towers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // map center_key -> (4,4)
-  auto ipair = getTowerIPhiIEta(center_key);
-  int center_iphi = ipair.first; int center_ieta = ipair.second;
-  std::map<int,SimpleCaloHit> towers7x7;
-  for (int iphi = 1; iphi <= 7; iphi++) {
-    for (int ieta = 1; ieta <= 7; ieta++) {
-      const int real_index = getTowerKey(iphi - 4 + center_iphi,ieta - 4 + center_ieta);
-      const int new_index = getTowerKey(iphi,ieta);
-      if ( l1CaloTowers.find(real_index) == l1CaloTowers.end() ) continue;
-      auto& tower = l1CaloTowers[real_index];
-      towers7x7.insert( {new_index,tower} );
-    }
-  }
-  return towers7x7;
-}
-
-
-std::pair<int,float> L1CaloJetProducer::getMaxTowerIn7x7(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // center_key is the center coordinates of the center 7x7
-  auto ipair = getTowerIPhiIEta(center_key);
-  int center_iphi = ipair.first; int center_ieta = ipair.second;
-  std::pair<int,float> max_tower = {0,0};
-  for (int iphi = 1; iphi <= 7; iphi++) {
-    for (int ieta = 1; ieta <= 7; ieta++) {
-      const int index = getTowerKey(iphi - 4 + center_iphi,ieta - 4 + center_ieta);
-      if ( l1CaloTowers.find(index) == l1CaloTowers.end() ) continue;
-      if (max_tower.second < l1CaloTowers[index].total_tower_et)
-	max_tower = std::make_pair(index,l1CaloTowers[index].total_tower_et);
-    }
-  }
-  return max_tower;
-}
-
-void L1CaloJetProducer::Cluster21x21(l1CaloJetObj& jet,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // map has 21x21 towers needed to find, cluster, and handle overlap for jet
-  // checking center 7x7 (11,11)
-  // Overlap handling needs to be done here
-  auto centered7x7 = get7x7Towers(1111,l1CaloTowers);
-  Cluster7x7(jet,centered7x7);
-}
-
-
-std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::get21x21Towers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // center_key is the center coordinates of the center 7x7
-  // map center_key -> (11,11)
-  auto ipair = getTowerIPhiIEta(center_key);
-  int center_iphi = ipair.first; int center_ieta = ipair.second;
-  std::map<int,SimpleCaloHit> towers21x21;
-  for (int iphi = 1; iphi <= 21; iphi++) {
-    for (int ieta = 1; ieta <= 21; ieta++) {
-      const int real_index = getTowerKey(iphi - 11 + center_iphi,ieta - 11 + center_ieta);
-      const int new_index = getTowerKey(iphi,ieta);
-      if ( l1CaloTowers.find(real_index) == l1CaloTowers.end() ) continue;
-      auto& tower = l1CaloTowers[real_index];
-      towers21x21.insert( {new_index,tower} );
-    }
-  }
-  return towers21x21;
-}
-
-std::pair<int,float> L1CaloJetProducer::getMaxTowerIn4x4(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // center_key is the coordinates of the center upper left tower (im sorry its just convinient)
-  // map center_key -> (2,3)
-  auto ipair = getTowerIPhiIEta(center_key);
-  int center_iphi = ipair.first; int center_ieta = ipair.second;
-  std::pair<int,float> max_tower = {0,0};
-  for (int iphi = 1; iphi <= 4; iphi++) {
-    for (int ieta = 1; ieta <= 4; ieta++) {
-      const int index = getTowerKey(iphi - 2 + center_iphi,ieta - 3 + center_ieta);
-      if ( l1CaloTowers.find(index) == l1CaloTowers.end() ) continue;
-      if (max_tower.second < l1CaloTowers[index].total_tower_et)
-	max_tower = std::make_pair(index,l1CaloTowers[index].total_tower_et);
-    }
-  }
-  return max_tower;
-}
-
-void L1CaloJetProducer::Cluster25x25(l1CaloJetObj& jet,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // map has 25x25 towers needed to find, cluster, and handle overlap for jet
-  // checking center 4x4 (13,13)
-  // Find largest tower in center 4x4
-  if (debug1) printf("Center iPhi: %i iEta: %i\n",l1CaloTowers[1313].tower_iPhi,l1CaloTowers[1313].tower_iEta);
-  auto max_tower = getMaxTowerIn4x4(1313,l1CaloTowers);
-  auto seed = l1CaloTowers[max_tower.first];
-  if (debug1) printf("Max tower iPhi: %i iEta: %i Et: %f\n",seed.tower_iPhi,seed.tower_iEta,seed.total_tower_et);
-  if (max_tower.second < EtMinForSeedHit) return;
-  
-  // center 21x21 towers around the highest tower in center 4x4
-  auto centered21x21 = get21x21Towers(max_tower.first,l1CaloTowers);
-  
-  // make sure the center tower is still the highest tower in centered 7x7
-  auto check_tower = getMaxTowerIn7x7(1111,centered21x21);
-  auto check_seed = centered21x21[check_tower.first];
-  if (!check_seed.equals(seed)) return;
-  
-  if (debug1) printf("--Found Jet Seed iPhi: %i iEta: %i Et: %f\n",seed.tower_iPhi,seed.tower_iEta,seed.total_tower_et);
-  Cluster21x21(jet,centered21x21);
-}
-
-
-
-std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::get25x25Towers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // center_key is the center coordinates of the center 7x7
-  // map center_key -> (13,13)
-  auto ipair = getTowerIPhiIEta(center_key);
-  int center_iphi = ipair.first; int center_ieta = ipair.second;
-  std::map<int,SimpleCaloHit> towers25x25;
-  for (int iphi = 1; iphi <= 25; iphi++) {
-    for (int ieta = 1; ieta <= 25; ieta++) {
-      const int real_index = getTowerKey(iphi - 13 + center_iphi,ieta - 13 + center_ieta);
-      const int new_index = getTowerKey(iphi,ieta);
-      if ( l1CaloTowers.find(real_index) == l1CaloTowers.end() ) continue;
-      auto& tower = l1CaloTowers[real_index];
-      towers25x25.insert( {new_index,tower} );
-    }
-  }
-  return towers25x25;
-}
-
 void L1CaloJetProducer::ClusterGCT(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // 9 Eta Slices Cells4x4
+  int START_IPHI,GCT_IPHI;
+  if ( !useLargerGCT ){
+    // Standard 32x34 (iPhi x iEta)
+    // Map center tower to (5,1) of a 32x34 box
+    START_IPHI = 6; GCT_IPHI = 32;
+  } else {
+    // Larger 42x34 (iPhi x iEta)
+    // Map center tower to (10,1) of a 42x34 box
+    START_IPHI = 11; GCT_IPHI = 42;
+  }
+  
   for (int ieta = 2; ieta <= 34; ieta += 4) {
-    // 6 Phi Slices Cells4x4
-    // Ignore 2 4Phi slides on each side of GCT region
-    for (int iphi = 6; iphi <= 26; iphi += 4) {
-      int center_key = getTowerKey(iphi,ieta);
+    for (int iphi = START_IPHI; iphi <= GCT_IPHI; iphi += 4) {
       l1CaloJetObj jet;
-      if (debug1) printf("--Clustering 25x25 Jet %i\n",center_key);
-      if (debug1) printf("Center iPhi: %i iEta: %i\n",l1CaloTowers[center_key].tower_iPhi,l1CaloTowers[center_key].tower_iEta);
-      auto centered25x25 = get25x25Towers(center_key,l1CaloTowers);
-      Cluster25x25(jet,centered25x25);
+      int center = getKey(iphi,ieta);
+      auto towers22x22 = get22x22Towers(center,l1CaloTowers);
+      Cluster22x22(jet,towers22x22);
       if ( jet.jetClusterET > 0 ) caloJetObjs.push_back(jet);
     }
   }
 }
+void L1CaloJetProducer::Cluster22x22(l1CaloJetObj& caloJetObj,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  int max_key = getMaxTowerIn4x4(1112,l1CaloTowers);
+  auto& seed = l1CaloTowers[max_key];
+  if (seed.total_tower_et < EtMinForSeedHit) return;
+  auto towers19x19 = get19x19Towers(max_key,l1CaloTowers);
 
-std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::getGCTTowers(int center_key,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  // center_key is the coordinates of the bottom left tower
-  // map center_key -> (6,1) *ignoring the left overlapping 4 phi regions
-  // gct has two overlaping rct regions on each side that isn't checked for seeds but is used for clustering
-  auto ipair = getTowerIPhiIEta(center_key);
-  int center_iphi = ipair.first; int center_ieta = ipair.second;
-  std::map<int,SimpleCaloHit> towersGCT;
-  for (int iphi = 1; iphi <= 32; iphi++) {
-    for (int ieta = 1; ieta <= 34; ieta++) {
-      int rphi = (iphi - 6 + center_iphi)%72 + 1;
-      int reta = (ieta - 1 + center_ieta)%34;
-      const int real_index = getTowerKey(rphi,reta);
-      const int new_index = getTowerKey(iphi,ieta);
-      if ( l1CaloTowers.find(real_index) == l1CaloTowers.end() ) continue;
-      auto& tower = l1CaloTowers[real_index];
-      towersGCT.insert( {new_index,tower} );
-    }
-  }
-  return towersGCT;
+  int check_key = getMaxTowerIn7x7(1010,towers19x19);
+  auto& check_seed = towers19x19[check_key];
+  if (check_seed != seed) return;
+
+  Cluster19x19(caloJetObj,towers19x19);
 }
-
-void L1CaloJetProducer::ClusterCalorimeter(std::vector<l1CaloJetObj>& caloJetObjs,std::map<int,SimpleCaloHit>& l1CaloTowers) {
-  for (int iphi = 1; iphi <= 72; iphi += 24) {
-    // center_key is the coordinates of the bottom left tower
-    int center_key = getTowerKey(iphi,1);
-    if (debug1) printf("Clustering GCT %i\n",center_key);
-    auto centeredGCT = getGCTTowers(center_key,l1CaloTowers);
-    ClusterGCT(caloJetObjs,centeredGCT);
+void L1CaloJetProducer::Cluster19x19(l1CaloJetObj& caloJetObj,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  auto towers7x7 = get7x7Towers(1010,l1CaloTowers);
+  if ( doOverlap ){
+    auto overlaps = getOverlapTowers(1010,l1CaloTowers);
+    Cluster7x7(caloJetObj,towers7x7,overlaps);
+  } else {
+    Cluster7x7(caloJetObj,towers7x7);
+  }
+}
+void L1CaloJetProducer::Cluster7x7(l1CaloJetObj& caloJetObj,std::map<int,SimpleCaloHit>& l1CaloTowers,std::set<int> overlaps) {
+  auto& seed = l1CaloTowers[404];
+  SetJetSeed(caloJetObj,seed);
+  for (auto& pair : l1CaloTowers) {
+    int key = pair.first;
+    auto& tower = pair.second;
+    // Don't add the seed tower twice and make sure the tower isn't in the overlap list
+    if ( key != 404 && overlaps.find(key) == overlaps.end() ) {
+      AddTower(caloJetObj,tower);
+    }
   }
 }
 
@@ -1001,7 +918,7 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 
       int ieta = l1Hit.tower_iEta;
       ieta = ieta > 0 ? 18 - ieta : 17 - ieta;
-      int index = getTowerKey(l1Hit.tower_iPhi,ieta);
+      int index = getKey(l1Hit.tower_iPhi,ieta);
       l1CaloTowers[index] = l1Hit;
       // if (debug) printf("Tower iEta %i iPhi %i eta %f phi %f ecal_et %f hcal_et %f total_et %f\n", (int)l1Hit.tower_iEta, (int)l1Hit.tower_iPhi, l1Hit.tower_eta, l1Hit.tower_phi, l1Hit.ecal_tower_et, l1Hit.hcal_tower_et, l1Hit.total_tower_et);
     }
@@ -1028,7 +945,6 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 							 const l1CaloJetObj& b){return a.jetClusterET > b.jetClusterET;});
 
   if (debug_out) debuginfo.save(l1CaloJetObjs,l1CaloTowers);
-  return;
   /**************************************************************************
    * Progress to adding L1EGs built from ECAL TPs  9x9 grid.
    * Recall, for 9x9 trigger towers gives diameter 0.78
@@ -1183,6 +1099,159 @@ void L1CaloJetProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
 }
 
 
+std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::getGCTTowers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  auto coordinates = getPhiEta(center);
+  int cphi = coordinates.first; int ceta = coordinates.second;
+  int dphi,deta,GCT_IPHI;
+  if ( !useLargerGCT) {
+    // Standard 32x34 (iPhi x iEta)
+    // Map center tower to (5,1) of a 32x34 box
+    dphi = cphi - 5; deta = ceta - 1; GCT_IPHI = 32;
+  } else {
+    // Larger 42x34 (iPhi x iEta)
+    // Map center tower to (10,1) of a 42x34 box
+    dphi = cphi - 10; deta = ceta - 1; GCT_IPHI = 42;
+  }
+  
+  std::map<int,SimpleCaloHit> towers;
+  for (int ieta = 1; ieta <= 34; ieta++) {
+    for (int iphi = 1; iphi <= GCT_IPHI; iphi++) {
+      int rphi = iphi + dphi; int reta = ieta + deta;
+      int rkey = getKey(rphi,reta);
+      if ( l1CaloTowers.find(rkey) != l1CaloTowers.end() ) {
+	int nkey = getKey(iphi,ieta);
+	towers[nkey] = l1CaloTowers[rkey];
+      }
+    }
+  }
+  return towers;
+}
+std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::get22x22Towers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  // Map center tower to (11,12) of a 22x22 box
+  auto coordinates = getPhiEta(center);
+  int cphi = coordinates.first; int ceta = coordinates.second;
+  int dphi = cphi - 11; int deta = ceta - 12;
+
+  std::map<int,SimpleCaloHit> towers;
+  for (int ieta = 1; ieta <= 22; ieta++) {
+    for (int iphi = 1; iphi <= 22; iphi++) {
+      int rphi = iphi + dphi; int reta = ieta + deta;
+      int rkey = getKey(rphi,reta);
+      if ( l1CaloTowers.find(rkey) != l1CaloTowers.end() ) {
+	int nkey = getKey(iphi,ieta);
+	towers[nkey] = l1CaloTowers[rkey];
+      }
+    }
+  }
+  return towers;
+}
+std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::get19x19Towers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  // Map center tower to (10,10) of a 19x19 box
+  auto coordinates = getPhiEta(center);
+  int cphi = coordinates.first; int ceta = coordinates.second;
+  int dphi = cphi - 10; int deta = ceta - 10;
+
+  std::map<int,SimpleCaloHit> towers;
+  for (int ieta = 1; ieta <= 19; ieta++) {
+    for (int iphi = 1; iphi <= 19; iphi++) {
+      int rphi = iphi + dphi; int reta = ieta + deta;
+      int rkey = getKey(rphi,reta);
+      if ( l1CaloTowers.find(rkey) != l1CaloTowers.end() ) {
+	int nkey = getKey(iphi,ieta);
+	towers[nkey] = l1CaloTowers[rkey];
+      }
+    }
+  }
+  return towers;
+}
+std::map<int,L1CaloJetProducer::SimpleCaloHit> L1CaloJetProducer::get7x7Towers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  // Map center tower to (4,4) of a 7x7 box
+  auto coordinates = getPhiEta(center);
+  int cphi = coordinates.first; int ceta = coordinates.second;
+  int dphi = cphi - 4; int deta = ceta - 4;
+
+  std::map<int,SimpleCaloHit> towers;
+  for (int ieta = 1; ieta <= 7; ieta++) {
+    for (int iphi = 1; iphi <= 7; iphi++) {
+      int rphi = iphi + dphi; int reta = ieta + deta;
+      int rkey = getKey(rphi,reta);
+      if ( l1CaloTowers.find(rkey) != l1CaloTowers.end() ) {
+	int nkey = getKey(iphi,ieta);
+	towers[nkey] = l1CaloTowers[rkey];
+      }
+    }
+  }
+  return towers;
+}
+std::set<int> L1CaloJetProducer::getOverlapTowers(int center,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  // Get list of all potential seed towers that are larger than the center seed
+  // There should only be on average 7.5 jets in the 3 ring around the 7x7 jet
+  auto& center_tower = l1CaloTowers[center];
+  auto coordinates = getPhiEta(center);
+  int cphi = coordinates.first; int ceta = coordinates.second;
+  int dphi = cphi - 4; int deta = ceta - 4;
+
+  std::set<int> overlap;
+  for (int ieta = 1; ieta <= 13; ieta++) {
+    for (int iphi = 1; iphi <= 13; iphi++) {
+      // Ignore center 7x7
+      if ( 4 <= ieta && ieta <=10 && 4 <= iphi && iphi <= 10 ) continue;
+
+      int rphi = iphi + dphi; int reta = ieta + deta;
+      int key = getKey(rphi,reta);
+      if ( l1CaloTowers.find(key) != l1CaloTowers.end() ) {
+	auto& tower = l1CaloTowers[key];
+	if ( center_tower < tower ) {
+	  overlap.insert(key);
+	}
+      }
+    }
+  }
+  return overlap;
+}
+int L1CaloJetProducer::getMaxTowerIn4x4(int center,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  // Map center tower to (2,3) of a 4x4 box
+  auto coordinates = getPhiEta(center);
+  int cphi = coordinates.first; int ceta = coordinates.second;
+  int dphi = cphi - 2; int deta = ceta - 3;
+  
+  std::pair<int,SimpleCaloHit> max_tower;
+  for (int ieta = 1; ieta <= 4; ieta++) {
+    for (int iphi = 1; iphi <= 4; iphi++) {
+      int rphi = iphi + dphi; int reta = ieta + deta;
+      int key = getKey(rphi,reta);
+      if ( l1CaloTowers.find(key) != l1CaloTowers.end() ) {
+	auto& tower = l1CaloTowers[key];
+	if ( max_tower.second < tower ) {
+	  max_tower = std::make_pair(key,tower);
+	}
+      }
+    }
+  }
+  return max_tower.first;
+}
+
+int L1CaloJetProducer::getMaxTowerIn7x7(int center,std::map<int,SimpleCaloHit>& l1CaloTowers) {
+  // Map center tower to (4,4) of a 7x7 box
+  auto coordinates = getPhiEta(center);
+  int cphi = coordinates.first; int ceta = coordinates.second;
+  int dphi = cphi - 4; int deta = ceta - 4;
+  
+  std::pair<int,SimpleCaloHit> max_tower;
+  for (int ieta = 1; ieta <= 7; ieta++) {
+    for (int iphi = 1; iphi <= 7; iphi++) {
+      int rphi = iphi + dphi; int reta = ieta + deta;
+      int key = getKey(rphi,reta);
+      if ( l1CaloTowers.find(key) != l1CaloTowers.end() ) {
+	auto& tower = l1CaloTowers[key];
+	if ( max_tower.second < tower ) {
+	  max_tower = std::make_pair(key,tower);
+	}
+      }
+    }
+  }
+  return max_tower.first;
+}
 
 
 
@@ -1201,28 +1270,6 @@ L1CaloJetProducer::ecalXtal_diPhi( int &iPhi_1, int &iPhi_2 ) const
   while (result > PI) result -= 2*PI;
   while (result <= -PI) result += 2*PI;
   return result;
-}
-
-
-int
-L1CaloJetProducer::tower_diPhi( int &iPhi_1, int &iPhi_2 ) const
-{
-  // 360 Crystals in full, 72 towers, half way is 36
-  int PI = 36;
-  int result = iPhi_1 - iPhi_2;
-  while (result > PI) result -= 2*PI;
-  while (result <= -PI) result += 2*PI;
-  return result;
-}
-
-
-// Added b/c of the iEta jump from +1 to -1 across the barrel mid point
-int
-L1CaloJetProducer::tower_diEta( int &iEta_1, int &iEta_2 ) const
-{
-  // On same side of barrel
-  if (iEta_1 * iEta_2 > 0) return iEta_1 - iEta_2;
-  else return iEta_1 - iEta_2 - 1;
 }
 
 
