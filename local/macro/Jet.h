@@ -19,6 +19,12 @@ int tower_diEta( int iEta_1, int iEta_2 ) {
   else return iEta_1 - iEta_2 - 1;
 }
 
+int module(int n,int m) {
+  int result = n%m;
+  if (result < 0) result += m;
+  return result;
+}
+
 struct SimpleCaloHit {
   int tower_iPhi;
   int tower_iEta;
@@ -52,7 +58,7 @@ struct SimpleCaloHit {
     return total_tower_et < rhs.total_tower_et;
   }
   string toString() const {
-    return "iPhi: "+to_string(tower_iPhi)+" iEta: "+to_string(tower_iEta);//+" Et: "+to_string(total_tower_et); 
+    return "iPhi: "+to_string(tower_iPhi)+" iEta: "+to_string(tower_iEta)+" Et: "+to_string(total_tower_et); 
   }
 };
 

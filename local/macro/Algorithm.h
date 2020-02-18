@@ -60,7 +60,6 @@ struct Algorithm {
 
     auto get_ieta = [](int y) { return 4*y + 2; };
     auto get_iphi = [START_IPHI](int x) { return 4*x + START_IPHI; };
-  
     // for (int ieta = 2; ieta <= 34; ieta += 4) {
       // for (int iphi = START_IPHI; iphi <= GCT_IPHI; iphi += 4) {
     for (int y = 0; y < 9; y++) {
@@ -142,12 +141,12 @@ struct Algorithm {
     map<int,SimpleCaloHit> towers;
     for (int ieta = 1; ieta <= 34; ieta++) {
       for (int iphi = 1; iphi <= GCT_IPHI; iphi++) {
-	int rphi = (iphi + dphi - 1)%72+1; int reta = (ieta + deta - 1)%34+1;
+	int rphi = module(iphi + dphi - 1,72)+1; int reta = module(ieta + deta - 1,34)+1;
 	int rkey = getKey(rphi,reta);
+	int nkey = getKey(iphi,ieta);
 	if ( l1CaloTowers.find(rkey) != l1CaloTowers.end() ) {
-	  int nkey = getKey(iphi,ieta);
 	  towers[nkey] = l1CaloTowers[rkey];
-	}
+	} 
       }
     }
     return towers;
