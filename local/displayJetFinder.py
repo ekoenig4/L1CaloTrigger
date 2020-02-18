@@ -57,11 +57,11 @@ def getGCT(ngct=0,grid=True):
     return gctlist,gridlist
 
 def plotJets(event,grid=False):
-    print '            nj1: %.3f' % (event.nJet)                   
-    print 'total jet   et1: %.3f' % (event.h_seed.Integral()) 
-    print 'total tower et1: %.3f' % (event.h_tower.Integral())
-    print 'jet/tower   ra1: %.3f' % (event.h_seed.Integral()/event.h_tower.Integral())
-    print 'total calo  et1: %.3f' % (event.h_calo.Integral())
+    # print '            nj1: %.3f' % (event.nJet)                   
+    # print 'total jet   et1: %.3f' % (event.h_seed.Integral()) 
+    # print 'total tower et1: %.3f' % (event.h_tower.Integral())
+    # print 'jet/tower   ra1: %.3f' % (event.h_seed.Integral()/event.h_tower.Integral())
+    # print 'total calo  et1: %.3f' % (event.h_calo.Integral())
     c=TCanvas('%s_%i' % (event.fname,event.nevent),'%s_%i' % (event.fname,event.nevent),1200,800)
     gStyle.SetOptStat(0);
     gStyle.SetLegendBorderSize(0);
@@ -147,7 +147,7 @@ tests = [ Test(fname) for fname in config.argv ]
 nevents = min( test.nevents for test in tests )
 c=TCanvas()
 c.Print('test_display.pdf(')
-for i in range(nevents):
+for i in range(nevents)[42:43]:
     print 'Analyzing Event %i' % (i+1)
     for test in tests:
         test.getEvent(i+1)

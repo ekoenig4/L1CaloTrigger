@@ -13,12 +13,16 @@ struct TreeInfo {
 };
 
 void buildTree() {
-  const char* input = "data/tyler_output.root";
-  TFile* tfile = TFile::Open(input);
+  // const char* inputFname = "output_python.root";
+  // const char* outputFname = "tree_python.root";
+
+  const char* inputFname = "output_macro.root";
+  const char* outputFname = "tree_macro.root";
+  TFile* tfile = TFile::Open(inputFname);
   int nevents = 100;
 
   TreeInfo info;
-  TFile* output = new TFile("tyler_tree.root","recreate");
+  TFile* output = new TFile(outputFname,"recreate");
   TTree* tree = new TTree("tree","tree");
   tree->Branch("nJet",&info.nJet);
   tree->Branch("jetPhi",&info.jetPhi);

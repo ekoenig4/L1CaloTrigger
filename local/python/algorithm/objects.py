@@ -27,16 +27,13 @@ class Tower:
         return 'iPhi: %i iEta: %i Et: %f' % (self.iphi,self.ieta,self.et)
     def __eq__(self,other):
         return self.iphi == other.iphi and self.ieta == other.ieta and self.et == other.et
-    def __gt__(self,other):
-        if other is None: return True
-        dphi,deta = deltaR(self.iphi,self.ieta,other.iphi,other.ieta)
+    def __lt__(self,other):
         if self.et == other.et:
-            if deta == 0 and dphi == 0: return False
-            if deta >= 0 and dphi >= 0: return False
-            if deta <= 0 and dphi <= 0: return True
-            if deta >  0 and dphi <  0: return abs(dphi) >= abs(deta)
-            if deta <  0 and dphi >  0: return abs(dphi) < abs(deta)
-        return self.et > other.et
+            dphi,deta = deltaR(self.iphi,self.ieta,other.iphi,other.ieta)
+            mag = dphi + deta
+            if mag == 0: return deta < 0
+            return mag > 0
+        return self.et < other.et
 class Jet:
     def __init__(self):
         self.iphi = -1

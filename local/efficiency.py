@@ -1,7 +1,7 @@
 from ROOT import *
 from sys import argv
 
-gROOT.SetBatch(1)
+# gROOT.SetBatch(1)
 gStyle.SetOptStat(0)
 
 varmap = {
@@ -39,6 +39,7 @@ def compare(fname_num,fname_den):
         ratio = TRatioPlot(h_num,h_den)
         ratio.SetH1DrawOpt("pex0")
         ratio.SetH2DrawOpt("hist")
+        ratio.SetGraphDrawOpt("p")
         ratio.Draw()
         hi = ratio.GetUpperRefObject()
         hi.GetYaxis().SetTitle("Events")
@@ -46,11 +47,12 @@ def compare(fname_num,fname_den):
 
         lo = ratio.GetLowerRefGraph()
         lo.GetYaxis().SetTitle("Old/New")
-        lo.GetYaxis().SetRangeUser(0.5,1.5)
+        lo.GetYaxis().SetRangeUser(0.75,1.35)
 
         lo.SetMarkerStyle(20)
         lo.SetMarkerSize(1)
         c.Update()
+        raw_input()
         c.Write()
     for variable in varmap: efficiency(variable)
     output.Close()
